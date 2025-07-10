@@ -6,7 +6,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
 
-![VoiceForge Architecture](https://via.placeholder.com/800x400/1e293b/ffffff?text=VoiceForge%0AText+%E2%86%92+Voice+Embedding+%E2%86%92+Character+Speech)
+![VoiceForge Architecture](https://github.com/PranavMishra17/VoiceForge--Forge-Character-Voices-from-Pure-Text/blob/ec67f1f9dc9a2779a9839109084cfe4a6c031f5a/head.png)
 
 ## Overview
 
