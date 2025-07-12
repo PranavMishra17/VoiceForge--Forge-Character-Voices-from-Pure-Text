@@ -20,19 +20,15 @@ from TTS.TTS.api import TTS
 
 from voice_encoder import VoiceDescriptionEncoder
 
+
 class CustomXTTS:
     """
     Modified XTTS that accepts textual voice descriptions
     """
     def __init__(self, tts_repo_path: str, sentence_model_name: str = "all-MiniLM-L6-v2"):
-        # Fix torch serialization first
-        import torch.serialization
-        torch.serialization.add_safe_globals([XttsConfig])
-        
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tts_repo_path = Path(tts_repo_path)
         
-        # Initialize standard TTS first to download models
         print("Initializing XTTS-v2...")
         self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(self.device)
         

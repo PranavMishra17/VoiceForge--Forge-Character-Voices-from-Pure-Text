@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""
-torch_fix.py - PyTorch Compatibility Fix
-"""
+"""torch_fix.py - PyTorch Fix"""
 
 import torch
 import torch.serialization
 
-def setup_torch_compatibility():
-    """Fix PyTorch weights loading for TTS models"""
-    try:
-        from TTS.TTS.tts.configs.xtts_config import XttsConfig
-        torch.serialization.add_safe_globals([XttsConfig])
-        print("PyTorch compatibility fixed")
-    except ImportError as e:
-        print(f"Warning: {e}")
+# Global fix for TTS loading
+from TTS.TTS.tts.configs.xtts_config import XttsConfig
+torch.serialization.add_safe_globals([XttsConfig])
 
-setup_torch_compatibility()
+original_load = torch.load
+def patched_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return original_load(*args, **kwargs)
+torch.load = patched_load
+
+print("PyTorch TTS compatibility fixed")
