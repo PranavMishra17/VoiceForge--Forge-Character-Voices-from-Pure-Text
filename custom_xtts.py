@@ -13,10 +13,11 @@ from sentence_transformers import SentenceTransformer
 from typing import Dict, List, Optional
 
 
+
+# Use original XTTS repo import style
 from TTS.TTS.tts.configs.xtts_config import XttsConfig
 from TTS.TTS.tts.models.xtts import Xtts
 from TTS.TTS.api import TTS
-
 
 from voice_encoder import VoiceDescriptionEncoder
 
@@ -32,9 +33,14 @@ class CustomXTTS:
         print("Initializing XTTS-v2...")
         self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(self.device)
         
-        # Get model path
-        home = os.path.expanduser("~")
-        self.model_path = Path(home) / ".local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2"
+        # Get model path (Windows: AppData/Local)
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            self.model_path = Path(local_appdata) / "tts" / "tts_models--multilingual--multi-dataset--xtts_v2"
+        else:
+            # Fallback to home/.local for non-Windows
+            home = os.path.expanduser("~")
+            self.model_path = Path(home) / ".local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2"
         
         # Load XTTS model directly for customization
         self.config = XttsConfig()
@@ -92,27 +98,35 @@ class CustomXTTS:
         sentence_embeddings = self.sentence_model.encode(voice_descriptions)
         xtts_speaker_embeddings = []
         xtts_gpt_cond_latents = []
-        
+        valid_sentence_embeddings = []
+        valid_descriptions = []
+        valid_audio_files = []
+
         for i, audio_file in enumerate(audio_files):
             if os.path.exists(audio_file):
                 try:
                     gpt_cond_latent, speaker_embedding = self.xtts_model.get_conditioning_latents(
                         audio_path=[audio_file]
                     )
-                    xtts_speaker_embeddings.append(speaker_embedding.cpu().numpy())
-                    xtts_gpt_cond_latents.append(gpt_cond_latent.cpu().numpy())
+                    # gpt_cond_latent: [1, N, D] or [N, D], speaker_embedding: [1, D] or [D]
+                    # Squeeze and stack properly
+                    xtts_speaker_embeddings.append(np.squeeze(speaker_embedding.cpu().numpy()))
+                    xtts_gpt_cond_latents.append(np.squeeze(gpt_cond_latent.cpu().numpy()))
+                    valid_sentence_embeddings.append(sentence_embeddings[i])
+                    valid_descriptions.append(voice_descriptions[i])
+                    valid_audio_files.append(audio_file)
                     print(f"Processed {i+1}/{len(audio_files)}: {audio_file}")
                 except Exception as e:
                     print(f"Error processing {audio_file}: {e}")
             else:
                 print(f"Audio file not found: {audio_file}")
-        
+
         return {
-            'sentence_embeddings': np.array(sentence_embeddings),
+            'sentence_embeddings': np.array(valid_sentence_embeddings),
             'speaker_embeddings': np.array(xtts_speaker_embeddings),
             'gpt_cond_latents': np.array(xtts_gpt_cond_latents),
-            'descriptions': voice_descriptions,
-            'audio_files': audio_files
+            'descriptions': valid_descriptions,
+            'audio_files': valid_audio_files
         }
     
     def train_voice_encoder(self, training_data: Dict, epochs: int = 100, batch_size: int = 8):
@@ -120,42 +134,47 @@ class CustomXTTS:
         print(f"Training voice encoder for {epochs} epochs...")
         
         sentence_embs = torch.FloatTensor(training_data['sentence_embeddings']).to(self.device)
-        speaker_targets = torch.FloatTensor(training_data['speaker_embeddings']).squeeze().to(self.device)
-        gpt_targets = torch.FloatTensor(training_data['gpt_cond_latents']).squeeze().to(self.device)
-        
+        speaker_targets = torch.FloatTensor(training_data['speaker_embeddings']).to(self.device)
+        gpt_targets = training_data['gpt_cond_latents']
+        # gpt_targets: shape [batch, N, D] or [batch, D]
+        # If shape is [batch, N, D], average over N
+        if len(gpt_targets.shape) == 3:
+            gpt_targets = np.mean(gpt_targets, axis=1)
+        gpt_targets = torch.FloatTensor(gpt_targets).to(self.device)
+
         dataset_size = len(sentence_embs)
         self.voice_encoder.train()
-        
+
         for epoch in range(epochs):
             total_loss = 0
             num_batches = 0
-            
+
             for i in range(0, dataset_size, batch_size):
                 end_idx = min(i + batch_size, dataset_size)
-                
+
                 batch_sentence = sentence_embs[i:end_idx]
                 batch_speaker = speaker_targets[i:end_idx]
                 batch_gpt = gpt_targets[i:end_idx]
-                
+
                 self.optimizer.zero_grad()
-                
+
                 pred_speaker, pred_gpt = self.voice_encoder(batch_sentence)
-                
+
                 speaker_loss = torch.nn.MSELoss()(pred_speaker, batch_speaker)
                 gpt_loss = torch.nn.MSELoss()(pred_gpt, batch_gpt)
-                
+
                 total_loss_batch = speaker_loss + gpt_loss
                 total_loss += total_loss_batch.item()
                 num_batches += 1
-                
+
                 total_loss_batch.backward()
                 self.optimizer.step()
-            
+
             avg_loss = total_loss / max(num_batches, 1)
-            
+
             if epoch % 10 == 0:
                 print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.6f}")
-        
+
         self.is_trained = True
         print("Training complete!")
     
@@ -176,7 +195,13 @@ class CustomXTTS:
         self.voice_encoder.eval()
         with torch.no_grad():
             speaker_embedding, gpt_cond_latent = self.voice_encoder(sentence_tensor)
-        
+            # Fix tensor shapes for XTTS
+            speaker_embedding = speaker_embedding.squeeze()
+            gpt_cond_latent = gpt_cond_latent.squeeze()
+            # If gpt_cond_latent is still 3D, average over the middle dimension
+            if len(gpt_cond_latent.shape) == 3:
+                gpt_cond_latent = gpt_cond_latent.mean(dim=1)
+
         outputs = self.xtts_model.inference(
             text=text,
             language=language,
@@ -188,7 +213,7 @@ class CustomXTTS:
             top_k=kwargs.get('top_k', 50),
             top_p=kwargs.get('top_p', 0.85)
         )
-        
+
         return outputs['wav']
     
     def save_voice_encoder(self, path: str):

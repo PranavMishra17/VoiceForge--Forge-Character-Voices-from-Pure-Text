@@ -47,20 +47,27 @@ def save_audio(audio: np.ndarray, output_path: str, sample_rate: int = 24000):
 
 def create_sample_training_data():
     """Create sample training data file"""
+    # Sample pairs
+    pairs = [
+        ("Deep male voice with authority and confidence", "training_audio/1.wav"),
+        ("Elderly male voice, wise and gentle", "training_audio/2.wav"),
+        ("Young female voice, cheerful and energetic", "training_audio/3.wav")
+    ]
+
+    # Only include pairs where audio file exists
+    valid_descriptions = []
+    valid_audio_files = []
+    for desc, audio_path in pairs:
+        if os.path.exists(audio_path):
+            valid_descriptions.append(desc)
+            valid_audio_files.append(audio_path)
+
     sample_data = {
-        "voice_descriptions": [
-            "Deep male voice with authority and confidence",
-            "Elderly male voice, wise and gentle",
-            "Young female voice, cheerful and energetic",
-        ],
-        "audio_files": [
-            "training_audio/1.wav",
-            "training_audio/2.wav", 
-            "training_audio/3.wav",
-        ]
+        "voice_descriptions": valid_descriptions,
+        "audio_files": valid_audio_files
     }
-    
+
     with open("training_data.json", 'w') as f:
         json.dump(sample_data, f, indent=2)
-    
-    print("Created sample training_data.json")
+
+    print(f"Created sample training_data.json with {len(valid_descriptions)} valid pairs.")

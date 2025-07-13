@@ -5,6 +5,22 @@ Train the voice description encoder with voice descriptions and audio samples
 """
 
 import os
+import sys
+import torch
+import numpy as np
+from pathlib import Path
+
+# Add TTS to path
+sys.path.append(str(Path(__file__).parent / "TTS"))
+
+from voice_encoder import VoiceDescriptionEncoder
+from custom_xtts import CustomXTTS
+from utils import save_audio, load_config
+
+# Patch PyTorch for XTTS checkpoint compatibility
+import torch_fix
+
+import os
 import json
 from pathlib import Path
 from custom_xtts import CustomXTTS
