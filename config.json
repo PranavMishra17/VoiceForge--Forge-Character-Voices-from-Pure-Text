@@ -1,9 +1,0 @@
-{
-  "tts_repo_path": "./TTS",
-  "sentence_model_name": "all-MiniLM-L6-v2",
-  "voice_encoder_path": "voice_encoder.pth",
-  "training_data_path": "training_data.json",
-  "training_epochs": 100,
-  "batch_size": 8,
-  "output_dir": "outputs"
-}
