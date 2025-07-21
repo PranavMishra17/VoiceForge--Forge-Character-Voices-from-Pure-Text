@@ -5,12 +5,13 @@ from datetime import datetime
 from pathlib import Path
 import argparse
 import torchaudio
+import json
+import numpy as np
 
 # Add paths
 sys.path.append('third_party/Matcha-TTS')
 sys.path.append('CosyVoice')
 
-# Direct imports like test_basic.py
 from cosyvoice.cli.cosyvoice import CosyVoice2
 from cosyvoice.utils.file_utils import load_wav
 
@@ -24,10 +25,13 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s'
 )
 
-class CosyVoiceTTS:
+class CosyVoice2TTS:
     def __init__(self, model_path='pretrained_models/CosyVoice2-0.5B'):
         """Initialize CosyVoice2 model"""
         try:
+            self.model_path = Path(model_path)
+            self.speaker_db_path = self.model_path / 'custom_speakers.json'
+            
             self.cosyvoice = CosyVoice2(
                 model_path, 
                 load_jit=False, 
@@ -35,36 +39,140 @@ class CosyVoiceTTS:
                 load_vllm=False, 
                 fp16=False
             )
-            # Get available speakers for SFT mode
-            self.available_speakers = self.cosyvoice.list_available_spks()
-            if not self.available_speakers:
-                self.available_speakers = ['default']
+            
+            # Load existing speakers
+            self._load_custom_speakers()
             
             logging.info("CosyVoice2 model initialized successfully")
             print("✅ CosyVoice2 model loaded successfully")
-            print(f"📢 Available speakers: {self.available_speakers}")
+            
         except Exception as e:
             logging.error(f"Failed to initialize model: {e}")
             raise e
 
-    def synthesize_simple(self, text, output_path, speaker=None):
-        """Simple text-to-speech synthesis using SFT mode"""
+    def _load_custom_speakers(self):
+        """Load previously saved speaker embeddings"""
         try:
-            # Use first available speaker if none specified
-            if speaker is None:
-                speaker = self.available_speakers[0] if self.available_speakers else 'default'
+            if self.speaker_db_path.exists():
+                with open(self.speaker_db_path, 'r') as f:
+                    speaker_data = json.load(f)
+                
+                loaded_speakers = []
+                for speaker_id, data in speaker_data.items():
+                    audio_path = data['audio_path']
+                    transcript = data['transcript']
+                    
+                    if Path(audio_path).exists():
+                        audio_16k = load_wav(audio_path, 16000)
+                        success = self.cosyvoice.add_zero_shot_spk(transcript, audio_16k, speaker_id)
+                        if success:
+                            loaded_speakers.append(speaker_id)
+                
+                if loaded_speakers:
+                    print(f"✅ Loaded speakers: {loaded_speakers}")
+                else:
+                    print("ℹ️ No existing speakers found")
+            else:
+                print("ℹ️ No speaker database found")
+                
+        except Exception as e:
+            print(f"⚠️ Error loading speakers: {e}")
+
+    def _save_custom_speakers(self, speaker_id, audio_path, transcript):
+        """Save speaker info for persistence"""
+        try:
+            speaker_data = {}
+            if self.speaker_db_path.exists():
+                with open(self.speaker_db_path, 'r') as f:
+                    speaker_data = json.load(f)
             
-            # Use SFT inference (predefined speakers)
-            result = self.cosyvoice.inference_sft(
+            speaker_data[speaker_id] = {
+                'audio_path': str(audio_path),
+                'transcript': transcript,
+                'created': datetime.now().isoformat()
+            }
+            
+            with open(self.speaker_db_path, 'w') as f:
+                json.dump(speaker_data, f, indent=2)
+                
+            print(f"💾 Saved speaker info to {self.speaker_db_path}")
+                
+        except Exception as e:
+            print(f"⚠️ Error saving speaker: {e}")
+
+    def extract_speaker_embedding(self, audio_path, transcript, speaker_id):
+        """Extract speaker embedding from audio file"""
+        try:
+            if not Path(audio_path).exists():
+                print(f"❌ Audio file not found: {audio_path}")
+                return False
+                
+            # Load audio at 16kHz
+            audio_16k = load_wav(audio_path, 16000)
+            
+            # Add speaker embedding
+            success = self.cosyvoice.add_zero_shot_spk(transcript, audio_16k, speaker_id)
+            
+            if success:
+                print(f"✅ Extracted speaker embedding: {speaker_id}")
+                # Save speaker info for persistence
+                self._save_custom_speakers(speaker_id, audio_path, transcript)
+                logging.info(f"Extracted and saved speaker embedding: {speaker_id}")
+                return True
+            else:
+                print(f"❌ Failed to extract speaker embedding: {speaker_id}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error extracting speaker embedding: {e}")
+            print(f"❌ Error extracting speaker embedding: {e}")
+            return False
+
+    def synthesize_with_speaker_id(self, text, output_path, speaker_id):
+        """Synthesize using saved speaker ID"""
+        try:
+            # Clean speaker ID
+            speaker_id = speaker_id.strip('"\'')
+            
+            # Check if speaker exists in memory
+            if not hasattr(self.cosyvoice, 'spk_db') or speaker_id not in self.cosyvoice.spk_db:
+                print(f"❌ Speaker '{speaker_id}' not found in active memory")
+                
+                # Try to reload from file
+                if self.speaker_db_path.exists():
+                    with open(self.speaker_db_path, 'r') as f:
+                        speaker_data = json.load(f)
+                    
+                    if speaker_id in speaker_data:
+                        data = speaker_data[speaker_id]
+                        print(f"🔄 Reloading speaker: {speaker_id}")
+                        audio_16k = load_wav(data['audio_path'], 16000)
+                        success = self.cosyvoice.add_zero_shot_spk(data['transcript'], audio_16k, speaker_id)
+                        if not success:
+                            print(f"❌ Failed to reload speaker: {speaker_id}")
+                            return None
+                    else:
+                        print(f"❌ Speaker '{speaker_id}' not found in database")
+                        return None
+                else:
+                    print("❌ No speaker database found")
+                    return None
+            
+            print(f"✅ Using speaker: {speaker_id}")
+            
+            # Use zero-shot with saved speaker ID
+            result = self.cosyvoice.inference_zero_shot(
                 text, 
-                speaker,
+                '',  # empty prompt text when using speaker_id
+                '',  # empty prompt audio when using speaker_id
+                zero_shot_spk_id=speaker_id,
                 stream=False
             )
             
             for i, j in enumerate(result):
                 final_path = f'{output_path}_output_{i}.wav'
                 torchaudio.save(final_path, j['tts_speech'], self.cosyvoice.sample_rate)
-                logging.info(f"Generated audio saved: {final_path}")
+                logging.info(f"Generated audio with speaker {speaker_id}: {final_path}")
                 print(f"✅ Audio saved: {final_path}")
                 return final_path
             return None
@@ -73,39 +181,68 @@ class CosyVoiceTTS:
             print(f"❌ TTS synthesis failed: {e}")
             return None
 
-    def synthesize_with_style(self, text, output_path, emotion=None, style=None, speed=1.0, speaker=None):
-        """Synthesize with style control - Note: CosyVoice2 doesn't support instruct mode"""
-        print(f"⚠️  CosyVoice2 doesn't support emotion/style instructions")
-        print(f"🔄 Using SFT mode with speed control instead")
-        
+    def synthesize_with_audio_prompt(self, text, output_path, prompt_audio, prompt_text=""):
+        """Synthesize using audio prompt (real-time voice cloning)"""
         try:
-            # Use first available speaker if none specified
-            if speaker is None:
-                speaker = self.available_speakers[0] if self.available_speakers else 'default'
+            if not Path(prompt_audio).exists():
+                print(f"❌ Prompt audio not found: {prompt_audio}")
+                return None
+                
+            # Load prompt audio
+            prompt_speech_16k = load_wav(prompt_audio, 16000)
             
-            # Use SFT inference with speed control
-            result = self.cosyvoice.inference_sft(
+            # Use zero-shot with audio prompt
+            result = self.cosyvoice.inference_zero_shot(
                 text, 
-                speaker,
-                stream=False,
-                speed=speed
+                prompt_text,
+                prompt_speech_16k,
+                stream=False
             )
             
             for i, j in enumerate(result):
                 final_path = f'{output_path}_output_{i}.wav'
                 torchaudio.save(final_path, j['tts_speech'], self.cosyvoice.sample_rate)
-                logging.info(f"Generated styled audio: {final_path}")
-                print(f"✅ Styled audio saved: {final_path} (speaker: {speaker}, speed: {speed})")
+                logging.info(f"Generated audio with prompt: {final_path}")
+                print(f"✅ Audio saved: {final_path}")
                 return final_path
             return None
         except Exception as e:
-            logging.error(f"Styled TTS synthesis failed: {e}")
-            print(f"❌ Styled TTS synthesis failed: {e}")
-            # Fallback to simple synthesis
-            print("🔄 Falling back to simple synthesis...")
-            return self.synthesize_simple(text, output_path, speaker)
+            logging.error(f"TTS synthesis failed: {e}")
+            print(f"❌ TTS synthesis failed: {e}")
+            return None
 
-    def process_dialogue_script(self, script_path, output_dir=None):
+    def synthesize_with_instruction(self, text, output_path, instruction, speaker_id=None):
+        """Synthesize with natural language instruction (emotion/style)"""
+        try:
+            if speaker_id:
+                # Use instruct2 with saved speaker
+                result = self.cosyvoice.inference_instruct2(
+                    text,
+                    instruction,
+                    zero_shot_spk_id=speaker_id,
+                    stream=False
+                )
+            else:
+                # Use instruct2 without specific speaker
+                result = self.cosyvoice.inference_instruct2(
+                    text,
+                    instruction,
+                    stream=False
+                )
+            
+            for i, j in enumerate(result):
+                final_path = f'{output_path}_output_{i}.wav'
+                torchaudio.save(final_path, j['tts_speech'], self.cosyvoice.sample_rate)
+                logging.info(f"Generated instructed audio: {final_path}")
+                print(f"✅ Instructed audio saved: {final_path}")
+                return final_path
+            return None
+        except Exception as e:
+            logging.error(f"Instructed TTS synthesis failed: {e}")
+            print(f"❌ Instructed TTS synthesis failed: {e}")
+            return None
+
+    def process_dialogue_script(self, script_path, output_dir=None, default_speaker_id=None):
         """Process dialogue script from .txt file"""
         script_path = Path(script_path)
         
@@ -136,23 +273,33 @@ class CosyVoiceTTS:
                 
             print(f"\n🎤 Processing line {i}: {line[:50]}...")
             
-            # Parse line for special formatting (speaker:speed:text)
-            text, speaker, speed = self._parse_dialogue_line(line)
+            # Parse line for special formatting
+            text, speaker_id, instruction = self._parse_dialogue_line(line)
+            
+            # Use default speaker if none specified
+            if not speaker_id:
+                speaker_id = default_speaker_id
             
             # Generate output path
             output_path = output_dir / f"line_{i:03d}"
             
-            # Synthesize
-            if speaker or speed != 1.0:
-                result_path = self.synthesize_with_style(text, str(output_path), speaker=speaker, speed=speed)
+            # Synthesize based on available parameters
+            result_path = None
+            if instruction:
+                print(f"🎭 Using instruction: {instruction}")
+                result_path = self.synthesize_with_instruction(text, str(output_path), instruction, speaker_id)
+            elif speaker_id:
+                print(f"👤 Using speaker: {speaker_id}")
+                result_path = self.synthesize_with_speaker_id(text, str(output_path), speaker_id)
             else:
-                result_path = self.synthesize_simple(text, str(output_path))
+                print("⚠️ No speaker or instruction specified - this may fail")
+                print("ℹ️ Consider extracting a speaker embedding first")
                 
             results.append({
                 'line_number': i,
                 'text': text,
-                'speaker': speaker,
-                'speed': speed,
+                'speaker_id': speaker_id,
+                'instruction': instruction,
                 'output_path': result_path
             })
         
@@ -162,14 +309,15 @@ class CosyVoiceTTS:
             f.write(f"Dialogue Processing Report\n")
             f.write(f"========================\n")
             f.write(f"Script: {script_path}\n")
+            f.write(f"Default Speaker: {default_speaker_id}\n")
             f.write(f"Processed: {len(results)} lines\n\n")
             
             for result in results:
                 f.write(f"Line {result['line_number']}: {result['text'][:50]}...\n")
-                if result['speaker']:
-                    f.write(f"  Speaker: {result['speaker']}\n")
-                if result['speed'] != 1.0:
-                    f.write(f"  Speed: {result['speed']}\n")
+                if result['speaker_id']:
+                    f.write(f"  Speaker: {result['speaker_id']}\n")
+                if result['instruction']:
+                    f.write(f"  Instruction: {result['instruction']}\n")
                 f.write(f"  Output: {result['output_path']}\n\n")
         
         print(f"\n🎉 Processed {len(results)} dialogue lines!")
@@ -177,50 +325,10 @@ class CosyVoiceTTS:
         return results
 
     def _parse_dialogue_line(self, line):
-        """Parse dialogue line for emotion/style tags"""
-        # Format: [emotion:style] text or [emotion] text or just text
-        emotion = None
-        style = None
-        text = line
-        
-        if line.startswith('[') and ']' in line:
-            tag_end = line.find(']')
-            tag_content = line[1:tag_end]
-            text = line[tag_end+1:].strip()
-            
-            if ':' in tag_content:
-                emotion, style = tag_content.split(':', 1)
-                emotion = emotion.strip()
-                style = style.strip()
-            else:
-                emotion = tag_content.strip()
-        
-        return text, emotion, style
-
-    def show_available_options(self):
-        """Display available options for CosyVoice2"""
-        print("\n📢 Available Speakers (SFT mode):")
-        for speaker in self.available_speakers:
-            print(f"  - {speaker}")
-        
-        print(f"\n🎛️ CosyVoice2 Capabilities:")
-        print(f"  - Text-to-Speech with predefined speakers")
-        print(f"  - Speed control (0.5-2.0x)")
-        print(f"  - Voice cloning with audio prompts")
-        print(f"  - ❌ Emotion/Style instructions (not supported)")
-        
-        print(f"\n📝 Dialogue Script Format:")
-        print(f"  Simple: Hello, how are you?")
-        print(f"  With speaker: [speaker:alice] Hello there!")
-        print(f"  With speed: [speed:1.5] This will be faster!")
-        print(f"  Combined: [speaker:bob,speed:0.8] Slow and steady.")
-        print(f"  Empty lines are skipped automatically.")
-
-    def _parse_dialogue_line(self, line):
-        """Parse dialogue line for speaker/speed tags"""
-        # Format: [speaker:name] or [speed:1.5] or [speaker:name,speed:1.5] text
-        speaker = None
-        speed = 1.0
+        """Parse dialogue line for speaker/instruction tags"""
+        # Format: [speaker:name] or [instruction:text] or [speaker:name,instruction:text] text
+        speaker_id = None
+        instruction = None
         text = line
         
         if line.startswith('[') and ']' in line:
@@ -237,32 +345,58 @@ class CosyVoiceTTS:
                     value = value.strip()
                     
                     if key == 'speaker':
-                        speaker = value
-                    elif key == 'speed':
-                        try:
-                            speed = float(value)
-                            speed = max(0.5, min(2.0, speed))  # Clamp to valid range
-                        except ValueError:
-                            pass
+                        speaker_id = value
+                    elif key in ['instruction', 'emotion', 'style']:
+                        instruction = value
         
-        return text, speaker, speed
+        return text, speaker_id, instruction
+
+    def show_available_options(self):
+        """Display available options and usage patterns"""
+        print(f"\n🎛️ CosyVoice2 Capabilities:")
+        print(f"  ✅ Zero-shot voice cloning with audio prompts")
+        print(f"  ✅ Speaker embedding extraction and reuse")
+        print(f"  ✅ Emotion/Style control via natural language instructions")
+        print(f"  ✅ Cross-lingual synthesis")
+        print(f"  ✅ Fine-grained control ([laughter], [breath], etc.)")
+        
+        print(f"\n📝 Dialogue Script Formats:")
+        print(f"  Basic: Hello, how are you?")
+        print(f"  With speaker: [speaker:john] Hello there!")
+        print(f"  With instruction: [instruction:用开心的语气说] I'm so excited!")
+        print(f"  Combined: [speaker:alice,instruction:用温柔的语气说] Take care!")
+        
+        print(f"\n🎭 Instruction Examples:")
+        print(f"  - 用开心的语气说 (speak happily)")
+        print(f"  - 用悲伤的语气说 (speak sadly)")  
+        print(f"  - 用快一点的语度说 (speak faster)")
+        print(f"  - 用温柔的语气说 (speak gently)")
 
 def main():
-    parser = argparse.ArgumentParser(description='CosyVoice TTS with Dialogue Support')
-    parser.add_argument('--mode', choices=['simple', 'styled', 'dialogue', 'options'], 
-                       required=True, help='Mode: simple TTS, styled TTS, dialogue script, or show options')
+    parser = argparse.ArgumentParser(description='CosyVoice2 TTS with Speaker Embeddings')
+    parser.add_argument('--mode', choices=['extract', 'simple', 'instruct', 'dialogue', 'options'], 
+                       required=True, help='Mode: extract speaker, simple TTS, instruct TTS, dialogue, or show options')
     
-    # Text synthesis args
+    # Speaker extraction args
+    parser.add_argument('--audio', type=str, help='Audio file path for speaker extraction')
+    parser.add_argument('--transcript', type=str, help='Transcript of the audio for speaker extraction')
+    parser.add_argument('--speaker_id', type=str, help='Speaker ID for extraction/synthesis')
+    
+    # Text synthesis args  
     parser.add_argument('--text', type=str, help='Text to synthesize')
     parser.add_argument('--output_path', type=str, help='Output path for audio file')
     
-    # Style args  
-    parser.add_argument('--speaker', type=str, help='Speaker name (from available speakers)')
-    parser.add_argument('--speed', type=float, default=1.0, help='Speech speed (0.5-2.0)')
+    # Prompt args
+    parser.add_argument('--prompt_audio', type=str, help='Prompt audio file for voice cloning')
+    parser.add_argument('--prompt_text', type=str, default="", help='Prompt text')
+    
+    # Instruction args
+    parser.add_argument('--instruction', type=str, help='Natural language instruction (emotion/style)')
     
     # Dialogue args
     parser.add_argument('--script', type=str, help='Path to dialogue script .txt file')
     parser.add_argument('--output_dir', type=str, default='output', help='Base output directory')
+    parser.add_argument('--default_speaker', type=str, help='Default speaker ID for dialogue')
     
     # Debug
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
@@ -271,18 +405,31 @@ def main():
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-        print("[DEBUG] Debug logging enabled")
+        print("🐛 Debug logging enabled")
 
     try:
         # Initialize TTS
-        if args.mode != 'options':
-            print("🚀 Initializing CosyVoice...")
-            tts = CosyVoiceTTS()
+        print("🚀 Initializing CosyVoice2...")
+        tts = CosyVoice2TTS()
         
         if args.mode == 'options':
-            # Show available options
-            tts = CosyVoiceTTS()  # Still need to initialize to show options
             tts.show_available_options()
+            
+        elif args.mode == 'extract':
+            if not args.audio or not args.transcript or not args.speaker_id:
+                print("❌ --audio, --transcript, and --speaker_id required for extract mode")
+                sys.exit(1)
+            
+            print(f"🎙️ Extracting speaker embedding from: {args.audio}")
+            print(f"📝 Transcript: {args.transcript}")
+            print(f"👤 Speaker ID: {args.speaker_id}")
+            
+            success = tts.extract_speaker_embedding(args.audio, args.transcript, args.speaker_id)
+            if success:
+                print("✅ Speaker embedding extracted successfully!")
+            else:
+                print("❌ Speaker embedding extraction failed")
+                sys.exit(1)
             
         elif args.mode == 'simple':
             if not args.text or not args.output_path:
@@ -290,25 +437,28 @@ def main():
                 sys.exit(1)
             
             print(f"🎤 Simple TTS: {args.text}")
-            tts.synthesize_simple(args.text, args.output_path, args.speaker)
             
-        elif args.mode == 'styled':
-            if not args.text or not args.output_path:
-                print("❌ --text and --output_path required for styled mode")
+            if args.speaker_id:
+                print(f"👤 Using speaker: {args.speaker_id}")
+                tts.synthesize_with_speaker_id(args.text, args.output_path, args.speaker_id)
+            elif args.prompt_audio:
+                print(f"🎙️ Using prompt audio: {args.prompt_audio}")
+                tts.synthesize_with_audio_prompt(args.text, args.output_path, args.prompt_audio, args.prompt_text)
+            else:
+                print("❌ Either --speaker_id or --prompt_audio required")
                 sys.exit(1)
             
-            print(f"🎛️ Styled TTS: {args.text}")
-            if args.speaker:
-                print(f"   Speaker: {args.speaker}")
-            if args.speed != 1.0:
-                print(f"   Speed: {args.speed}")
+        elif args.mode == 'instruct':
+            if not args.text or not args.output_path or not args.instruction:
+                print("❌ --text, --output_path, and --instruction required for instruct mode")
+                sys.exit(1)
+            
+            print(f"🎭 Instruct TTS: {args.text}")
+            print(f"📝 Instruction: {args.instruction}")
+            if args.speaker_id:
+                print(f"👤 Using speaker: {args.speaker_id}")
                 
-            tts.synthesize_with_style(
-                args.text, 
-                args.output_path, 
-                speaker=args.speaker,
-                speed=args.speed
-            )
+            tts.synthesize_with_instruction(args.text, args.output_path, args.instruction, args.speaker_id)
             
         elif args.mode == 'dialogue':
             if not args.script:
@@ -316,7 +466,12 @@ def main():
                 sys.exit(1)
             
             print(f"📜 Processing dialogue script: {args.script}")
-            tts.process_dialogue_script(args.script, args.output_dir)
+            if args.default_speaker:
+                print(f"👤 Default speaker: {args.default_speaker}")
+            else:
+                print("⚠️ No default speaker - lines without [speaker:...] may fail")
+                
+            tts.process_dialogue_script(args.script, args.output_dir, args.default_speaker)
             
     except Exception as e:
         logging.error(f"Fatal error: {e}")
