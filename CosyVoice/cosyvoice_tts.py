@@ -16,16 +16,21 @@ class CosyVoiceTTS:
             format='%(asctime)s %(levelname)s %(message)s'
         )
 
-    def synthesize(self, text, output_path, prompt_text=None, prompt_audio_path=None, speaker_id=None, stream=False):
+    def synthesize(self, text, output_path, speaker_id=None, speed=None, stream=False):
+        """
+        Synthesize speech using CosyVoice2's SFT mode. Supports speaker selection and speed control.
+        """
         try:
-            if prompt_audio_path:
-                prompt_speech_16k = load_wav(prompt_audio_path, 16000)
-            else:
-                prompt_speech_16k = None
-            if speaker_id:
-                result = self.cosyvoice.inference_zero_shot(text, prompt_text or '', prompt_speech_16k, zero_shot_spk_id=speaker_id, stream=stream)
-            else:
-                result = self.cosyvoice.inference_zero_shot(text, prompt_text or '', prompt_speech_16k, stream=stream)
+            # List available speakers
+            available_spks = self.cosyvoice.list_available_spks() if hasattr(self.cosyvoice, 'list_available_spks') else ['default']
+            if not speaker_id or speaker_id not in available_spks:
+                speaker_id = available_spks[0]
+            # Handle speed control in text
+            sft_kwargs = {'spk_id': speaker_id}
+            if speed is not None:
+                sft_kwargs['speed'] = speed
+            # Synthesize
+            result = self.cosyvoice.inference_sft(text, **sft_kwargs)
             for i, j in enumerate(result):
                 torchaudio.save(f'{output_path}_output_{i}.wav', j['tts_speech'], self.cosyvoice.sample_rate)
                 logging.info(f"Generated audio saved: {output_path}_output_{i}.wav")

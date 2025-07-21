@@ -1,0 +1,36 @@
+Dialogue Processing Report
+========================
+Script: sample_dialogue.txt
+Processed: 9 lines
+
+Line 1: Welcome to our presentation today....
+  Output: None
+
+Line 2: I'm thrilled to share our groundbreaking research ...
+  Speed: 1.2
+  Output: None
+
+Line 3: Let me begin with the methodology we used in this ...
+  Output: None
+
+Line 4: The results were quite unexpected, even for us....
+  Speed: 0.8
+  Output: None
+
+Line 5: However, I can assure you that our findings are st...
+  Output: None
+
+Line 6: There are some limitations we need to discuss care...
+  Speed: 0.7
+  Output: None
+
+Line 7: But overall, this represents a major breakthrough ...
+  Output: None
+
+Line 8: This could change everything we know about artific...
+  Speed: 1.5
+  Output: None
+
+Line 9: Thank you for your attention. Are there any questi...
+  Output: None
+
