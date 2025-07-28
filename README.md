@@ -1,4 +1,4 @@
-# VoiceForge 🎭
+# VoiceForge 🎭 [in development]
 
 **Forge Character Voices from Pure Text**
 
