@@ -1,9 +1,9 @@
 Welcome to our presentation today.
-[instruction:用兴奋的语气说] I'm thrilled to share our groundbreaking research with you!
-[speaker:presenter,instruction:用正式的语气说] Let me begin with the methodology we used in this study.
-[instruction:用惊讶的语气说] The results were quite unexpected, even for us.
+[instruction:excited tone] I'm thrilled to share our groundbreaking research with you!
+[speaker:presenter,instruction:in a formal tone] Let me begin with the methodology we used in this study.
+[instruction:in a surprised tone say] The results were quite unexpected, even for us.
 However, I can assure you that our findings are statistically significant.
-[instruction:用担心的语气说] There are some limitations we need to discuss carefully.
-[instruction:用开心的语气说] But overall, this represents a major breakthrough in the field.
-[instruction:用戏剧化的语气说] This could change everything we know about artificial intelligence!
-[instruction:用温柔的语气说] Thank you for your attention. Are there any questions?
+[instruction:in a concerned tone say] There are some limitations we need to discuss carefully.
+[instruction:happy tone] But overall, this represents a major breakthrough in the field.
+[instruction:in a dramatic tone say] This could change everything we know about artificial intelligence!
+[instruction:in a gentle tone say] Thank you for your attention. Are there any questions?

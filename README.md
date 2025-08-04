@@ -1,4 +1,4 @@
-# VoiceForge 🎭 [in development]
+# VoiceForge 🎭
 
 **Forge Character Voices from Pure Text**
 
@@ -10,166 +10,285 @@
 
 ## Overview
 
-VoiceForge is an AI-powered text-to-voice architecture that generates consistent character voices from natural language descriptions. No voice actors, no audio samples—just describe your character and hear them speak.
-
-**Perfect for:**
-- 🎮 Game developers creating unique NPCs
-- 📚 Interactive storytelling applications  
-- 🎬 Content creators needing character voices
-- 🔬 Researchers in voice synthesis
+VoiceForge is an AI-powered text-to-voice architecture built on CosyVoice that generates consistent character voices from natural language descriptions and audio samples. Create unlimited unique character voices for games, stories, and interactive applications.
 
 ## ✨ Key Features
 
-- **Text-Only Input**: Create voices from descriptions like "deep wizard voice, ancient and wise"
-- **Consistent Character Voices**: Same description = same voice, every time
-- **Lightweight Architecture**: Runs on RTX 3060 with 12GB VRAM
-- **Multi-Speaker Support**: Generate unlimited unique character voices
-- **Open Source**: Built on Coqui TTS and sentence transformers
+- **Speaker Embedding Extraction**: Create persistent voice profiles from audio samples
+- **Zero-Shot Voice Cloning**: Clone any voice with just a short audio sample
+- **Emotion & Style Control**: Use natural language instructions for voice modulation
+- **Dialogue Processing**: Batch process entire dialogue scripts with multiple characters
+- **External Output Management**: All outputs saved outside CosyVoice folder structure
+- **Comprehensive Logging**: Detailed logging and error handling
+- **Configurable Interface**: Environment variables and configuration file support
 
 ## 🚀 Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/pranavmishra/voiceforge.git
-cd voiceforge
+# Clone repository with CosyVoice submodule
+git clone --recursive https://github.com/PranavMishra17/VoiceForge.git
+cd VoiceForge
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Create your first character voice
-python create_character.py --description "mysterious female elf, melodic voice"
+# Download CosyVoice models
+cd CosyVoice
+python download_models.py
+cd ..
 
-# Generate speech
-python synthesize.py --character "elf_character" --text "Welcome to the enchanted forest"
+# Test installation
+python main.py --mode stats
 ```
 
-## 🏗️ Architecture
+## 📁 Project Structure
 
 ```
-Text Description → CharacterBERT → Voice Embedding → XTTS-v2 → Audio Output
+VoiceForge/
+├── main.py                          # External interface entry point
+├── config.py                        # Configuration management
+├── CosyVoice/                       # CosyVoice repository
+│   ├── cosyvoice_interface.py       # Main interface class
+│   └── pretrained_models/          # Downloaded models
+└── voiceforge_output/               # All outputs (auto-created)
+    ├── speakers/                    # Speaker database & embeddings
+    ├── audio/                       # Generated audio files
+    ├── dialogue/                    # Dialogue processing results
+    └── logs/                        # Application logs
 ```
 
-1. **Text Encoder**: Converts character descriptions to semantic embeddings
-2. **Voice Mapper**: Neural network mapping descriptions to voice embeddings  
-3. **TTS Synthesis**: XTTS-v2 model generates speech from voice embeddings
-4. **Character Database**: Persistent storage for consistent voice profiles
+## 💫 Usage Examples
 
-## 🎯 Example Usage
-
-```python
-from voiceforge import CharacterVoiceGenerator
-
-# Initialize generator
-generator = CharacterVoiceGenerator()
-
-# Create character voice from description
-embedding = generator.create_character(
-    character_id="dark_wizard",
-    description="Ancient male wizard, deep authoritative voice, slow deliberate speech"
-)
-
-# Generate speech
-audio = generator.synthesize(
-    character_id="dark_wizard", 
-    text="The ancient magic flows through these halls.",
-    speed=0.8,
-    emotion="mysterious"
-)
-```
-
-## 🔬 Technical Details
-
-- **Model Size**: 109M parameters (text encoder) + 345M parameters (TTS)
-- **Voice Embedding**: 512-dimensional vectors
-- **Inference Speed**: ~3 seconds per sentence on RTX 3060
-- **Consistency**: >90% similarity for identical descriptions
-- **Languages**: Currently supports English (multilingual coming soon)
-
-## 📊 Performance
-
-| Metric | Value |
-|--------|-------|
-| Generation Speed | 2-4 seconds/sentence |
-| Voice Consistency | 92% similarity |
-| Memory Usage | 8GB VRAM (inference) |
-| Character Limit | Unlimited |
-
-## 🎮 Game Development Integration
-
-```python
-# Define game characters
-characters = {
-    "narrator": "Neutral storytelling voice, clear and engaging",
-    "wise_mentor": "Elderly sage, deep wise voice, slow speech", 
-    "dark_lord": "Menacing deep voice, slow and threatening"
-}
-
-# Generate voices for all characters
-for char_id, description in characters.items():
-    generator.create_character(char_id, description)
-
-# In-game dialogue
-def speak_line(character, dialogue):
-    audio = generator.synthesize(character, dialogue)
-    game_engine.play_audio(audio)
-```
-
-## 🛠️ Installation & Setup
-
-### Prerequisites
-- Python 3.8+
-- CUDA-capable GPU (8GB+ VRAM recommended)
-- PyTorch with CUDA support
-
-### Dependencies
+**Extract Speaker Embedding:**
 ```bash
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install TTS sentence-transformers transformers
-pip install gradio fastapi uvicorn  # For web interface
+python main.py --mode extract --audio samples/wizard_voice.wav --transcript "Greetings, traveler. Welcome to the magical realm." --speaker_id wizard_voice
 ```
+
+```bash
+python main.py --mode extract --audio samples/character.wav --transcript "Hello, this is my character voice sample" --speaker_id my_character
+```
+
+**Simple Synthesis:**
+```bash
+python main.py --mode synthesize --text "Welcome to the magical realm" --output_name wizard_greeting --speaker_id wizard_voice
+```
+
+```bash
+python main.py --mode synthesize --text "The ancient magic flows through these halls." --output_name magic_speech --speaker_id wizard_voice
+```
+
+**With Emotion Control:**
+```bash
+python main.py --mode synthesize --text "I'm so excited to see you!" --output_name excited_greeting --speaker_id wizard_voice --instruction "speak with excitement and joy"
+```
+
+```bash
+python main.py --mode synthesize --text "Something dark approaches..." --output_name dark_warning --speaker_id wizard_voice --instruction "speak mysteriously and ominously"
+```
+
+**Real-time Voice Cloning:**
+```bash
+python main.py --mode synthesize --text "This is a test of voice cloning" --output_name cloned_test --prompt_audio samples/reference.wav --prompt_text "Original audio content"
+```
+
+**Dialogue Processing:**
+```bash
+python main.py --mode dialogue --script dialogue_scripts/fantasy_story.txt --dialogue_name fantasy_story --default_speaker wizard_voice
+```
+
+```bash
+python main.py --mode dialogue --script sample_dialogue.txt --dialogue_name presentation --default_speaker test_speaker
+```
+
+**Speaker Management:**
+```bash
+python main.py --mode list
+```
+
+```bash
+python main.py --mode stats
+```
+
+```bash
+python main.py --mode delete --speaker_id old_speaker
+```
+
+**With Custom Output Directory:**
+```bash
+python main.py --mode synthesize --text "Custom output test" --output_name test --speaker_id wizard_voice --output_dir my_project_output
+```
+
+
+**Dialogue Script Format:**
+```text
+[speaker:wizard_voice] Greetings, brave adventurer!
+[speaker:elf_voice,instruction:speak gently] The forest whispers your name.
+[instruction:speak mysteriously] Ancient secrets lie hidden here.
+Basic text without tags uses the default speaker.
+```
+
+### 6. Speaker Management
+
+```bash
+# List all available speakers
+python main.py --mode list
+
+# Delete a speaker
+python main.py --mode delete --speaker_id old_speaker
+
+# Show system statistics
+python main.py --mode stats
+```
+
+## 🎛️ Configuration
+
+### Configuration File (`voiceforge_config.json`)
+
+Automatically generated on first run:
+
+```json
+{
+  "model": {
+    "model_path": "CosyVoice/pretrained_models/CosyVoice2-0.5B",
+    "fp16": false
+  },
+  "paths": {
+    "output_base_dir": "voiceforge_output",
+    "speaker_db_path": null
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "max_audio_length": 30
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
+```
+
+### Environment Variables
+
+Override configuration with environment variables:
+
+```bash
+export VOICEFORGE_MODEL_PATH="custom/model/path"
+export VOICEFORGE_OUTPUT_DIR="custom/output/dir"
+export VOICEFORGE_SPEAKER_DB="custom/speakers.json"
+export VOICEFORGE_LOG_LEVEL="DEBUG"
+export VOICEFORGE_FP16="true"
+```
+
+## 🎮 Programming Interface
+
+Use VoiceForge programmatically:
+
+```python
+from CosyVoice.cosyvoice_interface import CosyVoiceInterface
+
+# Initialize interface
+voice_forge = CosyVoiceInterface(
+    output_base_dir='my_project_output',
+    log_level='INFO'
+)
+
+# Extract speaker embedding
+success = voice_forge.extract_speaker_embedding(
+    audio_path='samples/character.wav',
+    transcript='Hello, this is my character voice.',
+    speaker_id='my_character'
+)
+
+# Synthesize speech
+audio_path = voice_forge.synthesize_speech(
+    text='Welcome to the adventure!',
+    output_filename='character_greeting',
+    speaker_id='my_character',
+    instruction='speak with enthusiasm'
+)
+
+# Process dialogue
+results = voice_forge.process_dialogue_script(
+    script_path='story.txt',
+    dialogue_name='episode_1',
+    default_speaker_id='my_character'
+)
+```
+
+## 🔧 Advanced Features
+
+### Instruction Examples
+
+Control voice characteristics with natural language:
+
+- `"speak with excitement and joy"`
+- `"use a deep, mysterious voice"`
+- `"speak slowly and thoughtfully"`
+- `"add a slight accent"`
+- `"speak like an elderly wizard"`
+
+### Supported Audio Formats
+
+- WAV (recommended)
+- MP3
+- FLAC
 
 ### Hardware Requirements
+
 - **Minimum**: RTX 3060 (12GB VRAM)
 - **Recommended**: RTX 4070+ (16GB+ VRAM)
-- **Storage**: 2GB for models
+- **Storage**: 5GB for models
 - **RAM**: 16GB system memory
 
-## 🌐 Web Interface
+## 📊 Output Management
 
-Launch the interactive web interface:
+All outputs are organized outside the CosyVoice folder:
 
-```bash
-python web_app.py
+```
+voiceforge_output/
+├── speakers/
+│   ├── speaker_database.json         # Speaker metadata
+│   └── embeddings/                   # Individual speaker data
+├── audio/
+│   ├── [output_name]_output_0.wav   # Generated audio files
+│   └── character_voices/            # Character-specific audio
+├── dialogue/
+│   └── [dialogue_name]/             # Dialogue session results
+│       ├── line_001_output_0.wav
+│       ├── line_002_output_0.wav
+│       └── processing_report.txt
+└── logs/
+    └── cosyvoice_[timestamp].log    # Application logs
 ```
 
-Features:
-- Character voice creation and management
-- Real-time voice synthesis
-- Voice parameter tuning
-- Batch dialogue generation
-- Character voice library
+## 🛠️ Troubleshooting
 
-## 📈 Roadmap
+### Common Issues
 
-- [x] Core text-to-voice embedding architecture
-- [x] Character database and management
-- [x] XTTS-v2 integration
-- [ ] Web interface with real-time preview
-- [ ] Emotional voice modulation
-- [ ] Multi-language support
-- [ ] Voice interpolation and blending
-- [ ] Game engine plugins (Unity, Unreal)
-- [ ] Mobile deployment optimization
+**Model not found:**
+```bash
+cd CosyVoice
+python download_models.py
+```
+
+**CUDA out of memory:**
+```bash
+export VOICEFORGE_FP16="true"
+```
+
+**Permission errors:**
+Ensure write permissions for the output directory.
+
+**Import errors:**
+Check that all dependencies are installed and CosyVoice submodule is properly initialized.
 
 ## 🤝 Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+3. Follow software architecture in `project_structure.md`
+4. Add comprehensive logging and error handling
+5. Update documentation
+6. Submit pull request
 
 ## 📄 License
 
@@ -177,11 +296,10 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## 🙏 Acknowledgments
 
-- [Coqui TTS](https://github.com/coqui-ai/TTS) for the excellent TTS framework
-- [Sentence Transformers](https://www.sbert.net/) for text embedding models
-- [Hugging Face](https://huggingface.co/) for model hosting and tools
+- [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) for the excellent TTS framework
+- [FunAudioLLM](https://funaudiollm.github.io/) for the underlying models
 
-## 📞 Contact & Links
+## 📞 Contact
 
 **Pranav Mishra**
 
