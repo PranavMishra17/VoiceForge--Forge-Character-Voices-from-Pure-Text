@@ -1,36 +1,49 @@
 Dialogue Processing Report
 ========================
 Script: sample_dialogue.txt
+Default Speaker: test_speaker"
 Processed: 9 lines
 
 Line 1: Welcome to our presentation today....
-  Output: None
+  Speaker: test_speaker"
+  Output: output\sample_dialogue\line_001_output_0.wav
 
 Line 2: I'm thrilled to share our groundbreaking research ...
-  Speed: 1.2
+  Speaker: test_speaker"
+  Instruction: 用兴奋的语气说
   Output: None
 
 Line 3: Let me begin with the methodology we used in this ...
+  Speaker: presenter
+  Instruction: 用正式的语气说
   Output: None
 
 Line 4: The results were quite unexpected, even for us....
-  Speed: 0.8
+  Speaker: test_speaker"
+  Instruction: 用惊讶的语气说
   Output: None
 
 Line 5: However, I can assure you that our findings are st...
-  Output: None
+  Speaker: test_speaker"
+  Output: output\sample_dialogue\line_005_output_0.wav
 
 Line 6: There are some limitations we need to discuss care...
-  Speed: 0.7
+  Speaker: test_speaker"
+  Instruction: 用担心的语气说
   Output: None
 
 Line 7: But overall, this represents a major breakthrough ...
+  Speaker: test_speaker"
+  Instruction: 用开心的语气说
   Output: None
 
 Line 8: This could change everything we know about artific...
-  Speed: 1.5
+  Speaker: test_speaker"
+  Instruction: 用戏剧化的语气说
   Output: None
 
 Line 9: Thank you for your attention. Are there any questi...
+  Speaker: test_speaker"
+  Instruction: 用温柔的语气说
   Output: None
 
