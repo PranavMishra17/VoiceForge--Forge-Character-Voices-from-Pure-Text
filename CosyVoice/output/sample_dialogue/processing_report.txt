@@ -11,7 +11,7 @@ Line 1: Welcome to our presentation today....
 Line 2: I'm thrilled to share our groundbreaking research ...
   Speaker: test_speaker"
   Instruction: 用兴奋的语气说
-  Output: None
+  Output: output\sample_dialogue\line_002_output_0.wav
 
 Line 3: Let me begin with the methodology we used in this ...
   Speaker: presenter
@@ -21,7 +21,7 @@ Line 3: Let me begin with the methodology we used in this ...
 Line 4: The results were quite unexpected, even for us....
   Speaker: test_speaker"
   Instruction: 用惊讶的语气说
-  Output: None
+  Output: output\sample_dialogue\line_004_output_0.wav
 
 Line 5: However, I can assure you that our findings are st...
   Speaker: test_speaker"
@@ -30,20 +30,20 @@ Line 5: However, I can assure you that our findings are st...
 Line 6: There are some limitations we need to discuss care...
   Speaker: test_speaker"
   Instruction: 用担心的语气说
-  Output: None
+  Output: output\sample_dialogue\line_006_output_0.wav
 
 Line 7: But overall, this represents a major breakthrough ...
   Speaker: test_speaker"
   Instruction: 用开心的语气说
-  Output: None
+  Output: output\sample_dialogue\line_007_output_0.wav
 
 Line 8: This could change everything we know about artific...
   Speaker: test_speaker"
   Instruction: 用戏剧化的语气说
-  Output: None
+  Output: output\sample_dialogue\line_008_output_0.wav
 
 Line 9: Thank you for your attention. Are there any questi...
   Speaker: test_speaker"
   Instruction: 用温柔的语气说
-  Output: None
+  Output: output\sample_dialogue\line_009_output_0.wav
 

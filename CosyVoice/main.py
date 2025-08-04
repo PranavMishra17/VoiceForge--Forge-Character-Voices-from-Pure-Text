@@ -215,20 +215,43 @@ class CosyVoice2TTS:
         """Synthesize with natural language instruction (emotion/style)"""
         try:
             if speaker_id:
-                # Use instruct2 with saved speaker
-                result = self.cosyvoice.inference_instruct2(
-                    text,
-                    instruction,
-                    zero_shot_spk_id=speaker_id,
-                    stream=False
-                )
+                # Clean speaker ID
+                speaker_id = speaker_id.strip('"\'')
+                
+                # Get speaker's original audio for instruction synthesis
+                if self.speaker_db_path.exists():
+                    with open(self.speaker_db_path, 'r') as f:
+                        speaker_data = json.load(f)
+                    
+                    if speaker_id in speaker_data:
+                        # Load the original audio
+                        audio_path = speaker_data[speaker_id]['audio_path']
+                        prompt_speech_16k = load_wav(audio_path, 16000)
+                        
+                        try:
+                            # Use instruct2 with speaker's original audio
+                            result = self.cosyvoice.inference_instruct2(
+                                text,
+                                instruction,
+                                prompt_speech_16k,
+                                zero_shot_spk_id=speaker_id,
+                                stream=False
+                            )
+                        except Exception as instruct_error:
+                            print(f"⚠️ Instruction synthesis failed: {instruct_error}")
+                            print(f"🔄 Falling back to regular synthesis with speaker: {speaker_id}")
+                            # Fallback to regular zero-shot
+                            return self.synthesize_with_speaker_id(text, output_path, speaker_id)
+                            
+                    else:
+                        print(f"❌ Speaker '{speaker_id}' not found in database for instruction synthesis")
+                        return None
+                else:
+                    print(f"❌ Speaker database not found for instruction synthesis")
+                    return None
             else:
-                # Use instruct2 without specific speaker
-                result = self.cosyvoice.inference_instruct2(
-                    text,
-                    instruction,
-                    stream=False
-                )
+                print(f"❌ Speaker ID required for instruction synthesis")
+                return None
             
             for i, j in enumerate(result):
                 final_path = f'{output_path}_output_{i}.wav'
@@ -240,6 +263,10 @@ class CosyVoice2TTS:
         except Exception as e:
             logging.error(f"Instructed TTS synthesis failed: {e}")
             print(f"❌ Instructed TTS synthesis failed: {e}")
+            # Fallback to regular synthesis
+            if speaker_id:
+                print(f"🔄 Falling back to regular synthesis")
+                return self.synthesize_with_speaker_id(text, output_path, speaker_id.strip('"\''))
             return None
 
     def process_dialogue_script(self, script_path, output_dir=None, default_speaker_id=None):
