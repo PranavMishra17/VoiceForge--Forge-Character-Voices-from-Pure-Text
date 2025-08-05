@@ -191,7 +191,74 @@ class CosyVoiceInterface:
         except Exception as e:
             self.logger.error(f"Error loading speakers: {e}")
 
+    def _extract_embedding_from_spk_info(self, spk_info):
+        """Helper method to extract embedding data from spk_info object."""
+        try:
+            self.logger.debug(f"Extracting from spk_info type: {type(spk_info)}")
+            self.logger.debug(f"spk_info keys: {spk_info.keys() if isinstance(spk_info, dict) else 'Not a dict'}")
+            
+            embedding_data = {}
+            
+            # Extract speaker embedding
+            if 'spk_emb' in spk_info and spk_info['spk_emb'] is not None:
+                if hasattr(spk_info['spk_emb'], 'cpu'):
+                    embedding_data['spk_emb'] = spk_info['spk_emb'].cpu().numpy().tolist()
+                else:
+                    embedding_data['spk_emb'] = spk_info['spk_emb']
+                    
+            # Extract prompt text
+            if 'prompt_text' in spk_info:
+                embedding_data['prompt_text'] = spk_info['prompt_text']
+                
+            # Extract prompt speech
+            if 'prompt_speech' in spk_info and spk_info['prompt_speech'] is not None:
+                if hasattr(spk_info['prompt_speech'], 'cpu'):
+                    embedding_data['prompt_speech'] = spk_info['prompt_speech'].cpu().numpy().tolist()
+                else:
+                    embedding_data['prompt_speech'] = spk_info['prompt_speech']
+            
+            if embedding_data.get('spk_emb'):
+                self.logger.info(f"Extracted embedding vector: {len(embedding_data['spk_emb'])} dimensions")
+                return embedding_data
+            else:
+                self.logger.warning("No speaker embedding found in spk_info")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error extracting from spk_info: {e}")
+            return None
+
     def _save_speaker_to_database(self, speaker_id: str, audio_path: str, transcript: str, embedding_data: Optional[Dict] = None):
+        """Save speaker information and embedding to database."""
+        try:
+            speaker_data = {}
+            if self.speaker_db_path.exists():
+                with open(self.speaker_db_path, 'r', encoding='utf-8') as f:
+                    speaker_data = json.load(f)
+            
+            speaker_entry = {
+                'audio_path': str(audio_path),
+                'transcript': transcript,
+                'created': datetime.now().isoformat()
+            }
+            
+            # Add embedding data if available
+            if embedding_data:
+                speaker_entry['embedding_data'] = embedding_data
+                
+            speaker_data[speaker_id] = speaker_entry
+            
+            # Ensure directory exists
+            self.speaker_db_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(self.speaker_db_path, 'w', encoding='utf-8') as f:
+                json.dump(speaker_data, f, indent=2, ensure_ascii=False)
+                
+            self.logger.info(f"Saved speaker {speaker_id} {'with embedding' if embedding_data else ''} to database")
+                
+        except Exception as e:
+            self.logger.error(f"Error saving speaker to database: {e}")
+            raise
         """Save speaker information and embedding to database."""
         try:
             speaker_data = {}
@@ -252,55 +319,46 @@ class CosyVoiceInterface:
             if success:
                 self.logger.info(f"add_zero_shot_spk succeeded for {speaker_id}")
                 
-                # Debug: Check what exists
-                self.logger.debug(f"Has spk_db: {hasattr(self.cosyvoice, 'spk_db')}")
-                if hasattr(self.cosyvoice, 'spk_db'):
-                    self.logger.debug(f"spk_db keys: {list(self.cosyvoice.spk_db.keys())}")
-                    self.logger.debug(f"Speaker {speaker_id} in spk_db: {speaker_id in self.cosyvoice.spk_db}")
+                # Call save_spkinfo to ensure spk_db is created
+                try:
+                    self.cosyvoice.save_spkinfo()
+                    self.logger.debug("Called save_spkinfo successfully")
+                except Exception as save_error:
+                    self.logger.debug(f"save_spkinfo failed: {save_error}")
                 
-                # Extract the actual embedding vector for storage
+                # Now check for spk_db after save_spkinfo
                 embedding_data = None
                 try:
-                    if hasattr(self.cosyvoice, 'spk_db') and speaker_id in self.cosyvoice.spk_db:
+                    if hasattr(self.cosyvoice, 'spk_db') and self.cosyvoice.spk_db and speaker_id in self.cosyvoice.spk_db:
                         spk_info = self.cosyvoice.spk_db[speaker_id]
-                        self.logger.debug(f"Speaker info keys: {spk_info.keys() if isinstance(spk_info, dict) else 'Not a dict'}")
-                        self.logger.debug(f"Speaker info type: {type(spk_info)}")
+                        self.logger.debug(f"Found speaker in spk_db: {speaker_id}")
                         
-                        # Extract embedding components
-                        embedding_data = {}
-                        
-                        # Extract speaker embedding
+                        # Extract embedding tensor directly
                         if 'spk_emb' in spk_info and spk_info['spk_emb'] is not None:
-                            if hasattr(spk_info['spk_emb'], 'cpu'):
-                                embedding_data['spk_emb'] = spk_info['spk_emb'].cpu().numpy().tolist()
-                            else:
-                                embedding_data['spk_emb'] = spk_info['spk_emb']
-                        
-                        # Extract prompt text
-                        if 'prompt_text' in spk_info:
-                            embedding_data['prompt_text'] = spk_info['prompt_text']
-                        
-                        # Extract prompt speech
-                        if 'prompt_speech' in spk_info and spk_info['prompt_speech'] is not None:
-                            if hasattr(spk_info['prompt_speech'], 'cpu'):
-                                embedding_data['prompt_speech'] = spk_info['prompt_speech'].cpu().numpy().tolist()
-                            else:
-                                embedding_data['prompt_speech'] = spk_info['prompt_speech']
-                        
-                        if embedding_data.get('spk_emb'):
-                            self.logger.info(f"Extracted embedding vector: {len(embedding_data['spk_emb'])} dimensions")
-                        else:
-                            self.logger.warning("No speaker embedding found in spk_db")
-                            embedding_data = None
-                    else:
-                        self.logger.warning(f"Speaker {speaker_id} not found in spk_db after add_zero_shot_spk")
+                            embedding_tensor = spk_info['spk_emb']
                             
-                except Exception as embed_extract_error:
-                    self.logger.error(f"Failed to extract embedding: {embed_extract_error}")
+                            # Convert tensor to saveable format
+                            embedding_data = {
+                                'spk_emb': embedding_tensor.cpu().numpy().tolist(),
+                                'spk_emb_shape': list(embedding_tensor.shape),
+                                'prompt_text': spk_info.get('prompt_text', transcript),
+                                'embedding_type': 'tensor_converted'
+                            }
+                            
+                            self.logger.info(f"Extracted embedding: {embedding_tensor.shape} tensor -> {len(embedding_data['spk_emb'])} values")
+                        else:
+                            self.logger.warning("No spk_emb found in spk_info")
+                    else:
+                        self.logger.warning(f"spk_db not accessible: has_attr={hasattr(self.cosyvoice, 'spk_db')}, exists={bool(getattr(self.cosyvoice, 'spk_db', None))}")
+                        
+                except Exception as embed_error:
+                    self.logger.error(f"Embedding extraction failed: {embed_error}")
                     embedding_data = None
                 
                 # Save to database with embedding
                 self._save_speaker_to_database(speaker_id, str(audio_path), transcript, embedding_data)
+                self.logger.info(f"Successfully extracted and saved speaker embedding: {speaker_id}")
+                return True
                 self.logger.info(f"Successfully extracted and saved speaker embedding: {speaker_id}")
                 return True
             else:
