@@ -19,7 +19,7 @@ except ImportError as e:
 def main():
     parser = argparse.ArgumentParser(description='VoiceForge - Forge Character Voices from Pure Text')
     parser.add_argument('--mode', 
-                       choices=['extract', 'synthesize', 'dialogue', 'list', 'delete', 'stats'], 
+                       choices=['extract', 'synthesize', 'dialogue', 'list', 'delete', 'stats', 'add_embedding', 'export', 'import'], 
                        required=True, 
                        help='Operation mode')
     
@@ -68,6 +68,19 @@ def main():
     parser.add_argument('--instruction', 
                        type=str, 
                        help='Natural language instruction (emotion/style)')
+    parser.add_argument('--emotion', 
+                       type=str, 
+                       help='Emotion keyword (happy, sad, angry, excited, etc.)')
+    parser.add_argument('--tone', 
+                       type=str, 
+                       help='Tone specification (formal, casual, dramatic, etc.)')
+    parser.add_argument('--speed', 
+                       type=float, 
+                       default=1.0,
+                       help='Speech speed multiplier (default 1.0)')
+    parser.add_argument('--language', 
+                       type=str, 
+                       help='Language for synthesis (chinese, english, japanese, etc.)')
     
     # Dialogue processing
     parser.add_argument('--script', 
@@ -79,6 +92,22 @@ def main():
     parser.add_argument('--default_speaker', 
                        type=str, 
                        help='Default speaker for dialogue')
+    
+    # Direct embedding input
+    parser.add_argument('--embedding_vector', 
+                       type=str, 
+                       help='Comma-separated 192-dimensional embedding vector')
+    parser.add_argument('--embedding_file', 
+                       type=str, 
+                       help='Path to file containing embedding vector (JSON/NPY format)')
+    
+    # Import/Export
+    parser.add_argument('--export_path', 
+                       type=str, 
+                       help='Path to export speaker embeddings')
+    parser.add_argument('--import_path', 
+                       type=str, 
+                       help='Path to import speaker embeddings from')
     
     # Logging
     parser.add_argument('--log_level', 
@@ -121,6 +150,15 @@ def main():
         elif args.mode == 'stats':
             show_stats(voice_forge)
             
+        elif args.mode == 'add_embedding':
+            add_speaker_from_embedding(voice_forge, args)
+            
+        elif args.mode == 'export':
+            export_embeddings(voice_forge, args)
+            
+        elif args.mode == 'import':
+            import_embeddings(voice_forge, args)
+            
     except Exception as e:
         print(f"❌ Fatal error: {e}")
         import traceback
@@ -154,7 +192,7 @@ def extract_speaker(voice_forge: CosyVoiceInterface, args):
 
 
 def synthesize_speech(voice_forge: CosyVoiceInterface, args):
-    """Synthesize speech with various options."""
+    """Synthesize speech with enhanced options."""
     if not args.text or not args.output_name:
         print("❌ --text and --output_name required for synthesize mode")
         sys.exit(1)
@@ -169,6 +207,14 @@ def synthesize_speech(voice_forge: CosyVoiceInterface, args):
         print(f"   Prompt Audio: {args.prompt_audio}")
     if args.instruction:
         print(f"   Instruction: {args.instruction}")
+    if args.emotion:
+        print(f"   Emotion: {args.emotion}")
+    if args.tone:
+        print(f"   Tone: {args.tone}")
+    if args.speed != 1.0:
+        print(f"   Speed: {args.speed}x")
+    if args.language:
+        print(f"   Language: {args.language}")
     
     result_path = voice_forge.synthesize_speech(
         text=args.text,
@@ -176,7 +222,11 @@ def synthesize_speech(voice_forge: CosyVoiceInterface, args):
         speaker_id=args.speaker_id,
         prompt_audio=args.prompt_audio,
         prompt_text=args.prompt_text,
-        instruction=args.instruction
+        instruction=args.instruction,
+        emotion=args.emotion,
+        tone=args.tone,
+        speed=args.speed,
+        language=args.language
     )
     
     if result_path:
@@ -250,6 +300,111 @@ def delete_speaker(voice_forge: CosyVoiceInterface, args):
         print("❌ Speaker deletion failed (speaker may not exist)")
 
 
+def add_speaker_from_embedding(voice_forge: CosyVoiceInterface, args):
+    """Add speaker from direct embedding vector."""
+    if not args.speaker_id:
+        print("❌ --speaker_id required for add_embedding mode")
+        sys.exit(1)
+    
+    embedding_vector = None
+    
+    # Load embedding from various sources
+    if args.embedding_vector:
+        try:
+            embedding_vector = [float(x.strip()) for x in args.embedding_vector.split(',')]
+        except ValueError:
+            print("❌ Invalid embedding vector format. Use comma-separated floats.")
+            sys.exit(1)
+    
+    elif args.embedding_file:
+        import numpy as np
+        import json
+        
+        embedding_file = Path(args.embedding_file)
+        if not embedding_file.exists():
+            print(f"❌ Embedding file not found: {embedding_file}")
+            sys.exit(1)
+        
+        try:
+            if embedding_file.suffix.lower() == '.npy':
+                embedding_array = np.load(embedding_file)
+                embedding_vector = embedding_array.flatten().tolist()
+            elif embedding_file.suffix.lower() == '.json':
+                with open(embedding_file, 'r') as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    embedding_vector = data
+                elif isinstance(data, dict) and 'embedding' in data:
+                    embedding_vector = data['embedding']
+                else:
+                    print("❌ Invalid JSON format. Expected list or dict with 'embedding' key.")
+                    sys.exit(1)
+        except Exception as e:
+            print(f"❌ Error loading embedding file: {e}")
+            sys.exit(1)
+    
+    else:
+        print("❌ Either --embedding_vector or --embedding_file required for add_embedding mode")
+        sys.exit(1)
+    
+    if len(embedding_vector) != 192:
+        print(f"❌ Invalid embedding dimension: {len(embedding_vector)}. Expected 192.")
+        sys.exit(1)
+    
+    print(f"🎭 Adding speaker from embedding...")
+    print(f"   Speaker ID: {args.speaker_id}")
+    print(f"   Embedding dimension: {len(embedding_vector)}")
+    
+    success = voice_forge.add_speaker_from_embedding(
+        speaker_id=args.speaker_id,
+        embedding_vector=embedding_vector,
+        prompt_text=args.transcript or f"Speaker {args.speaker_id}",
+        embedding_metadata={'source': 'direct_input'}
+    )
+    
+    if success:
+        print("✅ Speaker added successfully from embedding!")
+    else:
+        print("❌ Failed to add speaker from embedding")
+        sys.exit(1)
+
+
+def export_embeddings(voice_forge: CosyVoiceInterface, args):
+    """Export speaker embeddings."""
+    if not args.export_path:
+        print("❌ --export_path required for export mode")
+        sys.exit(1)
+    
+    print(f"📤 Exporting speaker embeddings...")
+    print(f"   Export path: {args.export_path}")
+    
+    success = voice_forge.export_speaker_embeddings(args.export_path)
+    
+    if success:
+        print("✅ Speaker embeddings exported successfully!")
+    else:
+        print("❌ Failed to export speaker embeddings")
+        sys.exit(1)
+
+
+def import_embeddings(voice_forge: CosyVoiceInterface, args):
+    """Import speaker embeddings."""
+    if not args.import_path:
+        print("❌ --import_path required for import mode")
+        sys.exit(1)
+    
+    print(f"📥 Importing speaker embeddings...")
+    print(f"   Import path: {args.import_path}")
+    
+    imported_count = voice_forge.import_speaker_embeddings(args.import_path)
+    
+    if imported_count > 0:
+        print(f"✅ Successfully imported {imported_count} speakers!")
+    else:
+        print("❌ No speakers imported")
+        sys.exit(1)
+
+
 def show_stats(voice_forge: CosyVoiceInterface):
     """Show interface statistics."""
     stats = voice_forge.get_stats()
@@ -258,14 +413,27 @@ def show_stats(voice_forge: CosyVoiceInterface):
     print(f"   Model Path: {stats.get('model_path', 'N/A')}")
     print(f"   Output Directory: {stats.get('output_base_dir', 'N/A')}")
     print(f"   Speaker Database: {stats.get('speaker_database_path', 'N/A')}")
-    print(f"   Speaker Count: {stats.get('speaker_count', 0)}")
+    print(f"   Total Speakers: {stats.get('speaker_count', 0)}")
+    
+    embedding_counts = stats.get('embedding_counts', {})
+    print(f"   With Embeddings: {embedding_counts.get('with_embeddings', 0)}")
+    print(f"   Without Embeddings: {embedding_counts.get('without_embeddings', 0)}")
+    
     print(f"   Sample Rate: {stats.get('sample_rate', 'N/A')} Hz")
+    
+    features = stats.get('supported_features', {})
+    print("🚀 Supported Features:")
+    for feature, supported in features.items():
+        status = "✅" if supported else "❌"
+        print(f"   {status} {feature.replace('_', ' ').title()}")
 
 
 def show_examples():
     """Show usage examples."""
     examples = """
-🔥 VoiceForge Usage Examples:
+🔥 VoiceForge Enhanced Usage Examples:
+
+📍 BASIC OPERATIONS:
 
 1. Extract Speaker Embedding:
    python main.py --mode extract \\
@@ -273,46 +441,101 @@ def show_examples():
      --transcript "Hello, this is my voice sample" \\
      --speaker_id wizard_voice
 
-2. Synthesize with Speaker:
+2. Add Speaker from Direct Embedding:
+   python main.py --mode add_embedding \\
+     --speaker_id new_speaker \\
+     --embedding_file embeddings/speaker.npy \\
+     --transcript "Speaker description"
+
+3. Basic Speech Synthesis:
    python main.py --mode synthesize \\
      --text "Welcome to the magical realm" \\
      --output_name wizard_greeting \\
      --speaker_id wizard_voice
 
-3. Synthesize with Emotion:
+📍 ENHANCED SYNTHESIS:
+
+4. Emotion Control:
    python main.py --mode synthesize \\
-     --text "I'm so excited to see you!" \\
-     --output_name excited_greeting \\
+     --text "I'm absolutely thrilled to meet you!" \\
+     --output_name excited_speech \\
      --speaker_id wizard_voice \\
-     --instruction "speak with excitement and joy"
+     --emotion excited \\
+     --speed 1.1
 
-4. Real-time Voice Cloning:
+5. Tone & Style Control:
    python main.py --mode synthesize \\
-     --text "This is a test of voice cloning" \\
-     --output_name cloned_voice \\
-     --prompt_audio samples/reference.wav \\
-     --prompt_text "Original audio content"
+     --text "Please consider this proposal carefully" \\
+     --output_name formal_speech \\
+     --speaker_id business_voice \\
+     --tone professional \\
+     --emotion confident
 
-5. Process Dialogue Script:
-   python main.py --mode dialogue \\
-     --script dialogue_scripts/fantasy_story.txt \\
-     --dialogue_name fantasy_story \\
-     --default_speaker wizard_voice
+6. Multilingual Synthesis:
+   python main.py --mode synthesize \\
+     --text "今天天气真好" \\
+     --output_name chinese_speech \\
+     --speaker_id multilingual_voice \\
+     --language chinese \\
+     --emotion happy
 
-6. List Available Speakers:
-   python main.py --mode list
+7. Combined Instruction Synthesis:
+   python main.py --mode synthesize \\
+     --text "The treasure lies hidden in the ancient cave" \\
+     --output_name mysterious_narration \\
+     --speaker_id narrator_voice \\
+     --emotion mysterious \\
+     --tone dramatic \\
+     --instruction "whisper as if sharing a secret"
 
-7. Delete Speaker:
-   python main.py --mode delete --speaker_id old_speaker
+📍 DATA MANAGEMENT:
 
-8. Show Statistics:
-   python main.py --mode stats
+8. Export All Speaker Embeddings:
+   python main.py --mode export \\
+     --export_path backup/all_speakers.json
 
-📝 Dialogue Script Format:
+9. Import Speaker Embeddings:
+   python main.py --mode import \\
+     --import_path backup/all_speakers.json
+
+10. Real-time Voice Cloning:
+    python main.py --mode synthesize \\
+      --text "This voice will match the reference sample" \\
+      --output_name cloned_voice \\
+      --prompt_audio samples/reference.wav \\
+      --prompt_text "Original reference text" \\
+      --speed 0.9
+
+📍 DIALOGUE PROCESSING:
+
+11. Enhanced Dialogue Script:
+    python main.py --mode dialogue \\
+      --script enhanced_story.txt \\
+      --dialogue_name epic_tale \\
+      --default_speaker narrator_voice
+
+📍 MONITORING:
+
+12. Show Enhanced Statistics:
+    python main.py --mode stats
+
+13. List All Speakers:
+    python main.py --mode list
+
+📝 Enhanced Dialogue Script Format:
    Basic: Hello, how are you?
    With speaker: [speaker:wizard_voice] Greetings, traveler!
-   With emotion: [instruction:speak mysteriously] The ancient secrets await...
-   Combined: [speaker:elf_voice,instruction:speak gently] Take care on your journey.
+   With emotion: [emotion:excited] I can't wait to begin our journey!
+   With tone: [tone:whispering] The guards are coming...
+   Combined: [speaker:elf_voice,emotion:gentle,tone:formal] Your Majesty, the realm is at peace.
+
+🎭 Available Emotions: happy, sad, angry, excited, calm, nervous, confident, mysterious, dramatic, gentle, energetic, romantic
+
+🎯 Available Tones: formal, casual, professional, friendly, serious, playful, authoritative, whispering, shouting
+
+🌍 Supported Languages: chinese, english, japanese, korean, cantonese, sichuanese, shanghainese
+
+⚡ Speed Control: Use --speed with values like 0.5 (slow), 1.0 (normal), 1.5 (fast)
 """
     print(examples)
 

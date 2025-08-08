@@ -37,7 +37,13 @@ class CosyVoiceInterface:
                  speaker_db_path: Optional[str] = None,
                  log_level: str = 'INFO'):
         """
-        Initialize CosyVoice interface.
+        Initialize CosyVoice interface with enhanced embedding storage.
+        
+        Args:
+            model_path: Path to CosyVoice model
+            output_base_dir: Base directory for all outputs
+            speaker_db_path: Path to speaker database JSON
+            log_level: Logging level
         
         Args:
             model_path: Path to CosyVoice model directory
@@ -228,9 +234,67 @@ class CosyVoiceInterface:
             self.logger.error(f"Error extracting from spk_info: {e}")
             return None
 
+    def _extract_full_embedding_data(self, spk_info, transcript, embedding_tensor):
+        """Extract comprehensive embedding data from spk_info."""
+        try:
+            embedding_data = {
+                'spk_emb': embedding_tensor.cpu().numpy().tolist(),
+                'spk_emb_shape': list(embedding_tensor.shape),
+                'prompt_text': transcript,
+                'embedding_type': 'full_extracted',
+                'embedding_dim': embedding_tensor.shape[-1] if len(embedding_tensor.shape) > 1 else len(embedding_tensor)
+            }
+            
+            # Extract additional data from spk_info if available
+            if isinstance(spk_info, dict):
+                # Extract llm_embedding if available
+                if 'llm_embedding' in spk_info and spk_info['llm_embedding'] is not None:
+                    if hasattr(spk_info['llm_embedding'], 'cpu'):
+                        embedding_data['llm_embedding'] = spk_info['llm_embedding'].cpu().numpy().tolist()
+                    else:
+                        embedding_data['llm_embedding'] = spk_info['llm_embedding']
+                
+                # Extract flow_embedding if available
+                if 'flow_embedding' in spk_info and spk_info['flow_embedding'] is not None:
+                    if hasattr(spk_info['flow_embedding'], 'cpu'):
+                        embedding_data['flow_embedding'] = spk_info['flow_embedding'].cpu().numpy().tolist()
+                    else:
+                        embedding_data['flow_embedding'] = spk_info['flow_embedding']
+                
+                # Extract speech tokens if available
+                if 'llm_prompt_speech_token' in spk_info and spk_info['llm_prompt_speech_token'] is not None:
+                    if hasattr(spk_info['llm_prompt_speech_token'], 'cpu'):
+                        embedding_data['speech_token'] = spk_info['llm_prompt_speech_token'].cpu().numpy().tolist()
+                    else:
+                        embedding_data['speech_token'] = spk_info['llm_prompt_speech_token']
+                
+                # Extract text tokens if available
+                if 'prompt_text_token' in spk_info and spk_info['prompt_text_token'] is not None:
+                    if hasattr(spk_info['prompt_text_token'], 'cpu'):
+                        embedding_data['text_token'] = spk_info['prompt_text_token'].cpu().numpy().tolist()
+                    else:
+                        embedding_data['text_token'] = spk_info['prompt_text_token']
+            
+            return embedding_data
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting full embedding data: {e}")
+            # Fallback to basic extraction
+            return {
+                'spk_emb': embedding_tensor.cpu().numpy().tolist(),
+                'spk_emb_shape': list(embedding_tensor.shape),
+                'prompt_text': transcript,
+                'embedding_type': 'fallback_extracted'
+            }
+
     def _save_speaker_to_database(self, speaker_id: str, audio_path: str, transcript: str, embedding_data: Optional[Dict] = None):
         """Save speaker information and embedding to database."""
         try:
+            # Ensure output directory structure exists
+            output_base = Path(self.output_base_dir)
+            embeddings_dir = output_base / 'speakers' / 'embeddings'
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            
             speaker_data = {}
             if self.speaker_db_path.exists():
                 with open(self.speaker_db_path, 'r', encoding='utf-8') as f:
@@ -242,45 +306,29 @@ class CosyVoiceInterface:
                 'created': datetime.now().isoformat()
             }
             
-            # Add embedding data if available
-            if embedding_data:
+            # Save embedding data in multiple formats
+            if embedding_data and 'spk_emb' in embedding_data:
+                # Save JSON format (for human readability and portability)
+                embedding_json_path = embeddings_dir / f"{speaker_id}_embedding.json"
+                with open(embedding_json_path, 'w') as f:
+                    json.dump(embedding_data, f, indent=2)
+                
+                # Save NumPy format (for fast loading)
+                embedding_npy_path = embeddings_dir / f"{speaker_id}_embedding.npy"
+                embedding_array = np.array(embedding_data['spk_emb'])
+                np.save(embedding_npy_path, embedding_array)
+                
+                # Add paths to database entry
                 speaker_entry['embedding_data'] = embedding_data
+                speaker_entry['embedding_paths'] = {
+                    'json': str(embedding_json_path.relative_to(output_base)),
+                    'npy': str(embedding_npy_path.relative_to(output_base))
+                }
                 
             speaker_data[speaker_id] = speaker_entry
             
-            # Ensure directory exists
+            # Save updated database
             self.speaker_db_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(self.speaker_db_path, 'w', encoding='utf-8') as f:
-                json.dump(speaker_data, f, indent=2, ensure_ascii=False)
-                
-            self.logger.info(f"Saved speaker {speaker_id} {'with embedding' if embedding_data else ''} to database")
-                
-        except Exception as e:
-            self.logger.error(f"Error saving speaker to database: {e}")
-            raise
-        """Save speaker information and embedding to database."""
-        try:
-            speaker_data = {}
-            if self.speaker_db_path.exists():
-                with open(self.speaker_db_path, 'r', encoding='utf-8') as f:
-                    speaker_data = json.load(f)
-            
-            speaker_entry = {
-                'audio_path': str(audio_path),
-                'transcript': transcript,
-                'created': datetime.now().isoformat()
-            }
-            
-            # Add embedding data if available
-            if embedding_data:
-                speaker_entry['embedding_data'] = embedding_data
-                
-            speaker_data[speaker_id] = speaker_entry
-            
-            # Ensure directory exists
-            self.speaker_db_path.parent.mkdir(parents=True, exist_ok=True)
-            
             with open(self.speaker_db_path, 'w', encoding='utf-8') as f:
                 json.dump(speaker_data, f, indent=2, ensure_ascii=False)
                 
@@ -313,52 +361,46 @@ class CosyVoiceInterface:
             # Load audio at 16kHz
             audio_16k = load_wav(str(audio_path), 16000)
             
-            # Add speaker embedding
+            # Extract embedding directly using frontend method
+            embedding_tensor = self.cosyvoice.frontend._extract_spk_embedding(audio_16k)
+            self.logger.info(f"Direct embedding extraction: {embedding_tensor.shape}")
+            
+            # Add speaker with proper spk_info structure
             success = self.cosyvoice.add_zero_shot_spk(transcript, audio_16k, speaker_id)
             
             if success:
                 self.logger.info(f"add_zero_shot_spk succeeded for {speaker_id}")
                 
-                # Call save_spkinfo to ensure spk_db is created
-                try:
-                    self.cosyvoice.save_spkinfo()
-                    self.logger.debug("Called save_spkinfo successfully")
-                except Exception as save_error:
-                    self.logger.debug(f"save_spkinfo failed: {save_error}")
-                
-                # Now check for spk_db after save_spkinfo
+                # Extract comprehensive embedding data
                 embedding_data = None
                 try:
-                    if hasattr(self.cosyvoice, 'spk_db') and self.cosyvoice.spk_db and speaker_id in self.cosyvoice.spk_db:
-                        spk_info = self.cosyvoice.spk_db[speaker_id]
-                        self.logger.debug(f"Found speaker in spk_db: {speaker_id}")
-                        
-                        # Extract embedding tensor directly
-                        if 'spk_emb' in spk_info and spk_info['spk_emb'] is not None:
-                            embedding_tensor = spk_info['spk_emb']
+                    # Check if we can access the speaker info
+                    if hasattr(self.cosyvoice, 'frontend') and hasattr(self.cosyvoice.frontend, 'spk2info'):
+                        spk2info = self.cosyvoice.frontend.spk2info
+                        if speaker_id in spk2info:
+                            spk_info = spk2info[speaker_id]
+                            self.logger.debug(f"Found speaker in spk2info: {speaker_id}")
                             
-                            # Convert tensor to saveable format
-                            embedding_data = {
-                                'spk_emb': embedding_tensor.cpu().numpy().tolist(),
-                                'spk_emb_shape': list(embedding_tensor.shape),
-                                'prompt_text': spk_info.get('prompt_text', transcript),
-                                'embedding_type': 'tensor_converted'
-                            }
-                            
-                            self.logger.info(f"Extracted embedding: {embedding_tensor.shape} tensor -> {len(embedding_data['spk_emb'])} values")
+                            # Extract all relevant embedding information
+                            embedding_data = self._extract_full_embedding_data(spk_info, transcript, embedding_tensor)
+                            self.logger.info(f"Extracted full embedding data: {len(embedding_data.get('spk_emb', []))} dimensions")
                         else:
-                            self.logger.warning("No spk_emb found in spk_info")
+                            self.logger.warning(f"Speaker {speaker_id} not found in spk2info")
                     else:
-                        self.logger.warning(f"spk_db not accessible: has_attr={hasattr(self.cosyvoice, 'spk_db')}, exists={bool(getattr(self.cosyvoice, 'spk_db', None))}")
+                        self.logger.warning("Could not access spk2info")
                         
                 except Exception as embed_error:
                     self.logger.error(f"Embedding extraction failed: {embed_error}")
-                    embedding_data = None
+                    # Fallback to direct tensor
+                    embedding_data = {
+                        'spk_emb': embedding_tensor.cpu().numpy().tolist(),
+                        'spk_emb_shape': list(embedding_tensor.shape),
+                        'prompt_text': transcript,
+                        'embedding_type': 'direct_extracted'
+                    }
                 
                 # Save to database with embedding
                 self._save_speaker_to_database(speaker_id, str(audio_path), transcript, embedding_data)
-                self.logger.info(f"Successfully extracted and saved speaker embedding: {speaker_id}")
-                return True
                 self.logger.info(f"Successfully extracted and saved speaker embedding: {speaker_id}")
                 return True
             else:
@@ -369,15 +411,86 @@ class CosyVoiceInterface:
             self.logger.error(f"Error extracting speaker embedding: {e}")
             return False
 
+    def add_speaker_from_embedding(self, 
+                                  speaker_id: str, 
+                                  embedding_vector: List[float], 
+                                  prompt_text: str = "",
+                                  embedding_metadata: Optional[Dict] = None) -> bool:
+        """
+        Add a speaker directly from embedding vector without audio file.
+        
+        Args:
+            speaker_id: Unique identifier for the speaker
+            embedding_vector: 192-dimensional speaker embedding vector
+            prompt_text: Text associated with the embedding
+            embedding_metadata: Additional metadata about the embedding
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.info(f"Adding speaker from direct embedding: {speaker_id}")
+            
+            # Validate embedding dimension
+            if len(embedding_vector) != 192:
+                self.logger.error(f"Invalid embedding dimension: {len(embedding_vector)}. Expected 192.")
+                return False
+            
+            # Convert to tensor
+            embedding_tensor = torch.tensor([embedding_vector], dtype=torch.float32).to(self.cosyvoice.frontend.device)
+            
+            # Tokenize the prompt text
+            prompt_text_token, prompt_text_token_len = self.cosyvoice.frontend._extract_text_token(prompt_text)
+            
+            # Create complete spk_info structure as expected by CosyVoice2
+            spk_info = {
+                'llm_embedding': embedding_tensor,
+                'flow_embedding': embedding_tensor,
+                'prompt_text': prompt_text_token,
+                'prompt_text_len': prompt_text_token_len
+            }
+            
+            # Add to spk2info
+            if not hasattr(self.cosyvoice.frontend, 'spk2info'):
+                self.cosyvoice.frontend.spk2info = {}
+            
+            self.cosyvoice.frontend.spk2info[speaker_id] = spk_info
+            
+            # Prepare embedding data for database
+            embedding_data = {
+                'spk_emb': embedding_vector,
+                'spk_emb_shape': [1, 192],
+                'prompt_text': prompt_text,
+                'embedding_type': 'direct_input',
+                'embedding_dim': 192
+            }
+            
+            if embedding_metadata:
+                embedding_data.update(embedding_metadata)
+            
+            # Save to database (without audio path)
+            self._save_speaker_to_database(speaker_id, "DIRECT_EMBEDDING", prompt_text, embedding_data)
+            
+            self.logger.info(f"Successfully added speaker from embedding: {speaker_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding speaker from embedding: {e}")
+            return False
+
     def synthesize_speech(self, 
                          text: str, 
                          output_filename: str,
                          speaker_id: Optional[str] = None,
                          prompt_audio: Optional[str] = None,
                          prompt_text: str = "",
-                         instruction: Optional[str] = None) -> Optional[str]:
+                         instruction: Optional[str] = None,
+                         emotion: Optional[str] = None,
+                         tone: Optional[str] = None,
+                         speed: float = 1.0,
+                         language: Optional[str] = None) -> Optional[str]:
         """
-        Synthesize speech with various options.
+        Enhanced synthesize speech with comprehensive emotion and tone control.
         
         Args:
             text: Text to synthesize
@@ -386,6 +499,10 @@ class CosyVoiceInterface:
             prompt_audio: Audio prompt for real-time cloning
             prompt_text: Text for audio prompt
             instruction: Natural language instruction for emotion/style
+            emotion: Emotion keyword (happy, sad, angry, excited, etc.)
+            tone: Tone specification (formal, casual, dramatic, etc.)
+            speed: Speech speed multiplier (default 1.0)
+            language: Language specification for multilingual synthesis
             
         Returns:
             str: Path to generated audio file, None if failed
@@ -395,14 +512,21 @@ class CosyVoiceInterface:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
             self.logger.info(f"Synthesizing: {text[:50]}...")
+            self.logger.info(f"Parameters - Speaker: {speaker_id}, Emotion: {emotion}, Tone: {tone}, Speed: {speed}")
+            
+            # Build enhanced instruction from emotion and tone
+            enhanced_instruction = self._build_enhanced_instruction(instruction, emotion, tone, language)
+            
+            # Preprocess text with language tags if specified
+            processed_text = self._preprocess_text_with_language(text, language)
             
             # Choose synthesis method based on parameters
-            if instruction and speaker_id:
-                return self._synthesize_with_instruction(text, str(output_path), instruction, speaker_id)
+            if enhanced_instruction and speaker_id:
+                return self._synthesize_with_instruction(processed_text, str(output_path), enhanced_instruction, speaker_id, speed)
             elif speaker_id:
-                return self._synthesize_with_speaker_id(text, str(output_path), speaker_id)
+                return self._synthesize_with_speaker_id(processed_text, str(output_path), speaker_id, speed)
             elif prompt_audio:
-                return self._synthesize_with_audio_prompt(text, str(output_path), prompt_audio, prompt_text)
+                return self._synthesize_with_audio_prompt(processed_text, str(output_path), prompt_audio, prompt_text, speed)
             else:
                 self.logger.error("No speaker_id or prompt_audio provided")
                 return None
@@ -411,13 +535,94 @@ class CosyVoiceInterface:
             self.logger.error(f"Error in synthesize_speech: {e}")
             return None
 
-    def _synthesize_with_speaker_id(self, text: str, output_path: str, speaker_id: str) -> Optional[str]:
-        """Synthesize using saved speaker ID - now with fast embedding loading."""
+    def _build_enhanced_instruction(self, instruction: Optional[str], emotion: Optional[str], 
+                                   tone: Optional[str], language: Optional[str]) -> Optional[str]:
+        """Build enhanced instruction text from parameters."""
+        parts = []
+        
+        if instruction:
+            parts.append(instruction)
+        
+        if emotion:
+            emotion_instructions = {
+                'happy': 'speak with joy and happiness',
+                'sad': 'speak with sadness and melancholy',
+                'angry': 'speak with anger and intensity',
+                'excited': 'speak with excitement and enthusiasm',
+                'calm': 'speak calmly and peacefully',
+                'nervous': 'speak nervously with hesitation',
+                'confident': 'speak with confidence and authority',
+                'mysterious': 'speak mysteriously and enigmatically',
+                'dramatic': 'speak dramatically with emphasis',
+                'gentle': 'speak gently and softly',
+                'energetic': 'speak with high energy and vigor',
+                'romantic': 'speak romantically and lovingly'
+            }
+            if emotion.lower() in emotion_instructions:
+                parts.append(emotion_instructions[emotion.lower()])
+            else:
+                parts.append(f"speak with {emotion}")
+        
+        if tone:
+            tone_instructions = {
+                'formal': 'use a formal tone',
+                'casual': 'use a casual and relaxed tone',
+                'professional': 'use a professional business tone',
+                'friendly': 'use a warm and friendly tone',
+                'serious': 'use a serious and solemn tone',
+                'playful': 'use a playful and lighthearted tone',
+                'authoritative': 'use an authoritative and commanding tone',
+                'whispering': 'whisper softly',
+                'shouting': 'speak loudly and forcefully'
+            }
+            if tone.lower() in tone_instructions:
+                parts.append(tone_instructions[tone.lower()])
+            else:
+                parts.append(f"use a {tone} tone")
+        
+        if language:
+            language_map = {
+                'chinese': '用中文说',
+                'english': 'speak in English',
+                'japanese': '日本語で話す',
+                'korean': '한국어로 말하다',
+                'cantonese': '用粤语说',
+                'sichuanese': '用四川话说',
+                'shanghainese': '用上海话说'
+            }
+            if language.lower() in language_map:
+                parts.append(language_map[language.lower()])
+            else:
+                parts.append(f"speak in {language}")
+        
+        return ', '.join(parts) if parts else None
+
+    def _preprocess_text_with_language(self, text: str, language: Optional[str]) -> str:
+        """Preprocess text with language tags for multilingual synthesis."""
+        if not language:
+            return text
+        
+        language_tags = {
+            'chinese': '<|zh|>',
+            'english': '<|en|>',
+            'japanese': '<|jp|>',
+            'korean': '<|ko|>',
+            'cantonese': '<|yue|>'
+        }
+        
+        if language.lower() in language_tags:
+            return f"{language_tags[language.lower()]}{text}"
+        
+        return text
+
+    def _synthesize_with_speaker_id(self, text: str, output_path: str, speaker_id: str, speed: float = 1.0) -> Optional[str]:
+        """Synthesize using saved speaker ID with optimized embedding loading."""
         try:
             speaker_id = speaker_id.strip('"\'')
             
-            # Check if speaker exists in memory
-            if not hasattr(self.cosyvoice, 'spk_db') or speaker_id not in self.cosyvoice.spk_db:
+            # Check if speaker exists in memory (spk2info for CosyVoice2)
+            spk2info = getattr(self.cosyvoice.frontend, 'spk2info', {})
+            if speaker_id not in spk2info:
                 self.logger.warning(f"Speaker '{speaker_id}' not found in memory, attempting reload")
                 
                 # Try to reload from database with fast embedding restoration
@@ -428,34 +633,97 @@ class CosyVoiceInterface:
                     if speaker_id in speaker_data:
                         data = speaker_data[speaker_id]
                         
-                        # Try direct embedding restoration first (much faster)
-                        if 'embedding_data' in data and data['embedding_data']:
+                        # Try loading from NPY file first (fastest)
+                        if 'embedding_paths' in data and 'npy' in data['embedding_paths']:
                             try:
-                                embedding_data = data['embedding_data']
-                                spk_info = {}
+                                npy_path = Path(self.output_base_dir) / data['embedding_paths']['npy']
+                                if npy_path.exists():
+                                    embedding_array = np.load(npy_path)
+                                    # Ensure proper shape - should be (1, 192) for CosyVoice
+                                    if embedding_array.ndim == 1:
+                                        embedding_array = embedding_array.reshape(1, -1)
+                                    elif embedding_array.ndim > 2:
+                                        embedding_array = embedding_array.reshape(1, -1)
+                                    
+                                    # Create proper spk_info for CosyVoice2
+                                    embedding_tensor = torch.tensor(embedding_array, dtype=torch.float32).to(self.cosyvoice.frontend.device)
+                                    
+                                    # Debug logging
+                                    self.logger.debug(f"Loaded embedding shape: {embedding_tensor.shape}")
+                                    
+                                    # Tokenize the prompt text
+                                    prompt_text = data.get('transcript', '')
+                                    prompt_text_token, prompt_text_token_len = self.cosyvoice.frontend._extract_text_token(prompt_text)
+                                    
+                                    # Create complete spk_info structure as expected by CosyVoice2
+                                    spk_info = {
+                                        'llm_embedding': embedding_tensor,
+                                        'flow_embedding': embedding_tensor,
+                                        'prompt_text': prompt_text_token,
+                                        'prompt_text_len': prompt_text_token_len
+                                    }
+                                    
+                                    self.cosyvoice.frontend.spk2info[speaker_id] = spk_info
+                                    
+                                    self.logger.info(f"Fast-loaded speaker from NPY: {speaker_id}")
+                                    
+                                else:
+                                    raise FileNotFoundError(f"NPY file not found: {npy_path}")
+                                    
+                            except Exception as npy_error:
+                                self.logger.warning(f"NPY loading failed: {npy_error}, trying JSON")
                                 
-                                if embedding_data.get('spk_emb'):
-                                    spk_info['spk_emb'] = torch.tensor(embedding_data['spk_emb'])
-                                if embedding_data.get('prompt_text'):
-                                    spk_info['prompt_text'] = embedding_data['prompt_text']
-                                if embedding_data.get('prompt_speech'):
-                                    spk_info['prompt_speech'] = torch.tensor(embedding_data['prompt_speech'])
-                                
-                                if not hasattr(self.cosyvoice, 'spk_db'):
-                                    self.cosyvoice.spk_db = {}
-                                self.cosyvoice.spk_db[speaker_id] = spk_info
-                                
-                                self.logger.info(f"Fast-loaded speaker from embedding: {speaker_id}")
-                            except Exception as embed_error:
-                                self.logger.warning(f"Embedding restoration failed: {embed_error}, trying audio reload")
-                                # Fallback to slower audio loading
-                                audio_16k = load_wav(data['audio_path'], 16000)
-                                success = self.cosyvoice.add_zero_shot_spk(data['transcript'], audio_16k, speaker_id)
-                                if not success:
-                                    self.logger.error(f"Failed to reload speaker: {speaker_id}")
-                                    return None
+                                # Try JSON as backup
+                                try:
+                                    if 'embedding_paths' in data and 'json' in data['embedding_paths']:
+                                        json_path = Path(self.output_base_dir) / data['embedding_paths']['json']
+                                        if json_path.exists():
+                                            with open(json_path, 'r') as f:
+                                                embedding_data = json.load(f)
+                                            
+                                            # Create proper spk_info for CosyVoice2
+                                            embedding_array = np.array(embedding_data['spk_emb'])
+                                            if embedding_array.ndim == 1:
+                                                embedding_array = embedding_array.reshape(1, -1)
+                                            elif embedding_array.ndim > 2:
+                                                embedding_array = embedding_array.reshape(1, -1)
+                                            
+                                            embedding_tensor = torch.tensor(embedding_array, dtype=torch.float32).to(self.cosyvoice.frontend.device)
+                                            
+                                            # Debug logging
+                                            self.logger.debug(f"Loaded embedding shape: {embedding_tensor.shape}")
+                                            
+                                            # Tokenize the prompt text
+                                            prompt_text = embedding_data.get('prompt_text', data.get('transcript', ''))
+                                            prompt_text_token, prompt_text_token_len = self.cosyvoice.frontend._extract_text_token(prompt_text)
+                                            
+                                            # Create complete spk_info structure as expected by CosyVoice2
+                                            spk_info = {
+                                                'llm_embedding': embedding_tensor,
+                                                'flow_embedding': embedding_tensor,
+                                                'prompt_text': prompt_text_token,
+                                                'prompt_text_len': prompt_text_token_len
+                                            }
+                                            
+                                            self.cosyvoice.frontend.spk2info[speaker_id] = spk_info
+                                            
+                                            self.logger.info(f"Loaded speaker from JSON: {speaker_id}")
+                                        else:
+                                            raise FileNotFoundError(f"JSON file not found: {json_path}")
+                                    else:
+                                        raise ValueError("No JSON path in database")
+                                        
+                                except Exception as json_error:
+                                    self.logger.warning(f"JSON loading failed: {json_error}, trying audio reload")
+                                    # Final fallback to audio loading
+                                    audio_16k = load_wav(data['audio_path'], 16000)
+                                    success = self.cosyvoice.add_zero_shot_spk(data['transcript'], audio_16k, speaker_id)
+                                    if not success:
+                                        self.logger.error(f"Failed to reload speaker: {speaker_id}")
+                                        return None
                         else:
-                            # Legacy audio loading for old database entries
+                            # Legacy loading for old database entries
+                            self.logger.warning("No embedding paths found, using legacy audio loading")
                             audio_16k = load_wav(data['audio_path'], 16000)
                             success = self.cosyvoice.add_zero_shot_spk(data['transcript'], audio_16k, speaker_id)
                             if not success:
@@ -470,7 +738,7 @@ class CosyVoiceInterface:
             
             # Generate speech (now much faster with direct embedding)
             result = self.cosyvoice.inference_zero_shot(
-                text, '', '', zero_shot_spk_id=speaker_id, stream=False
+                text, '', '', zero_shot_spk_id=speaker_id, stream=False, speed=speed
             )
             
             for i, j in enumerate(result):
@@ -485,7 +753,7 @@ class CosyVoiceInterface:
             self.logger.error(f"Error in _synthesize_with_speaker_id: {e}")
             return None
 
-    def _synthesize_with_audio_prompt(self, text: str, output_path: str, prompt_audio: str, prompt_text: str) -> Optional[str]:
+    def _synthesize_with_audio_prompt(self, text: str, output_path: str, prompt_audio: str, prompt_text: str, speed: float = 1.0) -> Optional[str]:
         """Synthesize using audio prompt."""
         try:
             if not Path(prompt_audio).exists():
@@ -495,7 +763,7 @@ class CosyVoiceInterface:
             prompt_speech_16k = load_wav(prompt_audio, 16000)
             
             result = self.cosyvoice.inference_zero_shot(
-                text, prompt_text, prompt_speech_16k, stream=False
+                text, prompt_text, prompt_speech_16k, stream=False, speed=speed
             )
             
             for i, j in enumerate(result):
@@ -510,34 +778,52 @@ class CosyVoiceInterface:
             self.logger.error(f"Error in _synthesize_with_audio_prompt: {e}")
             return None
 
-    def _synthesize_with_instruction(self, text: str, output_path: str, instruction: str, speaker_id: str) -> Optional[str]:
+    def _synthesize_with_instruction(self, text: str, output_path: str, instruction: str, speaker_id: str, speed: float = 1.0) -> Optional[str]:
         """Synthesize with natural language instruction."""
         try:
             speaker_id = speaker_id.strip('"\'')
             
-            # Get speaker's original audio
+            # Check if speaker exists in memory first
+            spk2info = getattr(self.cosyvoice.frontend, 'spk2info', {})
+            if speaker_id not in spk2info:
+                self.logger.warning(f"Speaker '{speaker_id}' not found in memory, attempting reload")
+                # Try to reload speaker using the same logic as _synthesize_with_speaker_id
+                reload_result = self._synthesize_with_speaker_id(text, output_path, speaker_id, speed)
+                if reload_result is None:
+                    return None
+            
+            # Get speaker's audio or use a default audio for instruction synthesis
             if self.speaker_db_path.exists():
                 with open(self.speaker_db_path, 'r', encoding='utf-8') as f:
                     speaker_data = json.load(f)
                 
                 if speaker_id in speaker_data:
                     audio_path = speaker_data[speaker_id]['audio_path']
-                    prompt_speech_16k = load_wav(audio_path, 16000)
                     
-                    try:
-                        result = self.cosyvoice.inference_instruct2(
-                            text, instruction, prompt_speech_16k,
-                            zero_shot_spk_id=speaker_id, stream=False
-                        )
-                    except Exception as instruct_error:
-                        self.logger.warning(f"Instruction synthesis failed: {instruct_error}, falling back to regular synthesis")
-                        return self._synthesize_with_speaker_id(text, output_path, speaker_id)
+                    # Handle direct embedding speakers (no audio file)
+                    if audio_path == "DIRECT_EMBEDDING":
+                        self.logger.info(f"Using direct embedding for instruction synthesis: {speaker_id}")
+                        # For direct embeddings, we'll use the speaker_id approach instead
+                        # since inference_instruct2 requires audio input
+                        return self._synthesize_with_speaker_id(text, output_path, speaker_id, speed)
+                    else:
+                        # Load audio file for instruction synthesis
+                        prompt_speech_16k = load_wav(audio_path, 16000)
                         
-                    for i, j in enumerate(result):
-                        final_path = f'{output_path}_output_{i}.wav'
-                        torchaudio.save(final_path, j['tts_speech'], self.sample_rate)
-                        self.logger.info(f"Generated instructed audio: {final_path}")
-                        return final_path
+                        try:
+                            result = self.cosyvoice.inference_instruct2(
+                                text, instruction, prompt_speech_16k,
+                                zero_shot_spk_id=speaker_id, stream=False, speed=speed
+                            )
+                        except Exception as instruct_error:
+                            self.logger.warning(f"Instruction synthesis failed: {instruct_error}, falling back to regular synthesis")
+                            return self._synthesize_with_speaker_id(text, output_path, speaker_id, speed)
+                            
+                        for i, j in enumerate(result):
+                            final_path = f'{output_path}_output_{i}.wav'
+                            torchaudio.save(final_path, j['tts_speech'], self.sample_rate)
+                            self.logger.info(f"Generated instructed audio: {final_path}")
+                            return final_path
                 else:
                     self.logger.error(f"Speaker '{speaker_id}' not found in database")
                     return None
@@ -550,7 +836,7 @@ class CosyVoiceInterface:
         except Exception as e:
             self.logger.error(f"Error in _synthesize_with_instruction: {e}")
             # Fallback to regular synthesis
-            return self._synthesize_with_speaker_id(text, output_path, speaker_id)
+            return self._synthesize_with_speaker_id(text, output_path, speaker_id, speed)
 
     def process_dialogue_script(self, 
                                script_path: str, 
@@ -736,15 +1022,106 @@ class CosyVoiceInterface:
             self.logger.error(f"Error deleting speaker: {e}")
             return False
 
+    def get_speaker_embedding(self, speaker_id: str) -> Optional[List[float]]:
+        """Get the embedding vector for a specific speaker."""
+        try:
+            if self.speaker_db_path.exists():
+                with open(self.speaker_db_path, 'r', encoding='utf-8') as f:
+                    speaker_data = json.load(f)
+                
+                if speaker_id in speaker_data and 'embedding_data' in speaker_data[speaker_id]:
+                    embedding_data = speaker_data[speaker_id]['embedding_data']
+                    if 'spk_emb' in embedding_data:
+                        return embedding_data['spk_emb']
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting speaker embedding: {e}")
+            return None
+
+    def export_speaker_embeddings(self, output_path: str) -> bool:
+        """Export all speaker embeddings to a single file."""
+        try:
+            embeddings = {}
+            speakers = self.list_speakers()
+            
+            for speaker_id in speakers:
+                embedding = self.get_speaker_embedding(speaker_id)
+                if embedding:
+                    embeddings[speaker_id] = {
+                        'embedding': embedding,
+                        'info': self.get_speaker_info(speaker_id)
+                    }
+            
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(embeddings, f, indent=2, ensure_ascii=False)
+            
+            self.logger.info(f"Exported {len(embeddings)} speaker embeddings to {output_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error exporting speaker embeddings: {e}")
+            return False
+
+    def import_speaker_embeddings(self, import_path: str) -> int:
+        """Import speaker embeddings from a file."""
+        try:
+            import_path = Path(import_path)
+            if not import_path.exists():
+                self.logger.error(f"Import file not found: {import_path}")
+                return 0
+            
+            with open(import_path, 'r', encoding='utf-8') as f:
+                embeddings_data = json.load(f)
+            
+            imported_count = 0
+            for speaker_id, data in embeddings_data.items():
+                if 'embedding' in data and data['embedding']:
+                    success = self.add_speaker_from_embedding(
+                        speaker_id=speaker_id,
+                        embedding_vector=data['embedding'],
+                        prompt_text=data.get('info', {}).get('transcript', ''),
+                        embedding_metadata=data.get('info', {})
+                    )
+                    if success:
+                        imported_count += 1
+            
+            self.logger.info(f"Imported {imported_count} speakers from {import_path}")
+            return imported_count
+            
+        except Exception as e:
+            self.logger.error(f"Error importing speaker embeddings: {e}")
+            return 0
+
     def get_stats(self) -> Dict[str, Any]:
         """Get interface statistics."""
         try:
+            speakers = self.list_speakers()
+            embedding_counts = {'with_embeddings': 0, 'without_embeddings': 0}
+            
+            for speaker_id in speakers:
+                if self.get_speaker_embedding(speaker_id):
+                    embedding_counts['with_embeddings'] += 1
+                else:
+                    embedding_counts['without_embeddings'] += 1
+            
             stats = {
                 'model_path': str(self.model_path),
                 'output_base_dir': str(self.output_base_dir),
-                'speaker_count': len(self.list_speakers()),
+                'speaker_count': len(speakers),
+                'embedding_counts': embedding_counts,
                 'sample_rate': self.sample_rate,
-                'speaker_database_path': str(self.speaker_db_path)
+                'speaker_database_path': str(self.speaker_db_path),
+                'supported_features': {
+                    'direct_embedding_input': True,
+                    'emotion_control': True,
+                    'tone_control': True,
+                    'speed_control': True,
+                    'multilingual': True,
+                    'instruction_synthesis': True
+                }
             }
             return stats
         except Exception as e:
