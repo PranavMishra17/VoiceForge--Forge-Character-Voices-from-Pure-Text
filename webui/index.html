@@ -1,0 +1,279 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>VoiceForge UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 0; }
+    small { color: #666; }
+    section { border: 1px solid #ddd; padding: 12px; margin: 12px 0; border-radius: 6px; }
+    label { display: block; margin: 6px 0 4px; font-weight: 600; }
+    input[type=text], textarea, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 8px 12px; border: 1px solid #999; background: #f6f6f6; border-radius: 4px; cursor: pointer; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .audio-list li { margin: 6px 0; }
+    .status { white-space: pre-wrap; background: #f7f7f7; padding: 8px; border-radius: 4px; border: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <h1>VoiceForge</h1>
+  <small>Barebones UI for running the same operations as main.py</small>
+
+  <section>
+    <h3>Configuration</h3>
+    <div class="row">
+      <div>
+        <label>Output Directory</label>
+        <input id="outputDir" type="text" placeholder="voiceforge_output" />
+      </div>
+      <div>
+        <label>Speaker DB Path</label>
+        <input id="speakerDb" type="text" placeholder="voiceforge_output/speakers/speaker_database.json" />
+      </div>
+    </div>
+    <button onclick="applyConfig()">Apply</button>
+  </section>
+
+  <section>
+    <h3>Speakers</h3>
+    <div class="row">
+      <div>
+        <label>Speaker</label>
+        <select id="speakerSelect"></select>
+      </div>
+      <div style="align-self:end">
+        <button onclick="refreshSpeakers()">Refresh</button>
+        <button onclick="deleteSpeaker()">Delete</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>Extract Speaker Embedding</h3>
+    <label>Audio File</label>
+    <input id="extractAudio" type="file" accept="audio/*" />
+    <label>Transcript</label>
+    <input id="extractTranscript" type="text" placeholder="Short transcript of the audio" />
+    <label>Speaker ID</label>
+    <input id="extractSpeakerId" type="text" placeholder="unique_speaker_id" />
+    <button onclick="extractEmbedding()">Extract</button>
+  </section>
+
+  <section>
+    <h3>Add Speaker from Embedding File</h3>
+    <label>Embedding File (.npy or .json)</label>
+    <input id="embeddingFile" type="file" accept=".npy,.json" />
+    <label>Speaker ID</label>
+    <input id="embeddingSpeakerId" type="text" placeholder="unique_speaker_id" />
+    <label>Transcript / Prompt Text</label>
+    <input id="embeddingTranscript" type="text" placeholder="describe the speaker" />
+    <button onclick="addEmbedding()">Add Speaker</button>
+  </section>
+
+  <section>
+    <h3>Synthesize Speech</h3>
+    <label>Text</label>
+    <textarea id="synthText" rows="3" placeholder="Text to synthesize..."></textarea>
+    <div class="row">
+      <div>
+        <label>Output Name</label>
+        <input id="synthOutput" type="text" placeholder="output_name" />
+      </div>
+      <div>
+        <label>Speaker (optional)</label>
+        <input id="synthSpeaker" type="text" placeholder="leave empty to use prompt audio" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Emotion</label>
+        <input id="synthEmotion" type="text" placeholder="excited, calm, angry..." />
+      </div>
+      <div>
+        <label>Tone</label>
+        <input id="synthTone" type="text" placeholder="formal, casual, whispering..." />
+      </div>
+      <div>
+        <label>Speed</label>
+        <input id="synthSpeed" type="number" value="1.0" step="0.1" />
+      </div>
+      <div>
+        <label>Language</label>
+        <input id="synthLanguage" type="text" placeholder="english, chinese, japanese..." />
+      </div>
+    </div>
+    <label>Prompt Audio (optional)</label>
+    <input id="synthPromptAudio" type="file" accept="audio/*" />
+    <label>Prompt Text (optional)</label>
+    <input id="synthPromptText" type="text" />
+    <button onclick="synthesize()">Synthesize</button>
+    <div id="synthResult"></div>
+  </section>
+
+  <section>
+    <h3>Dialogue</h3>
+    <label>Dialogue Name</label>
+    <input id="dialogueName" type="text" placeholder="session_name" />
+    <label>Default Speaker</label>
+    <input id="dialogueSpeaker" type="text" placeholder="optional default speaker id" />
+    <label>Script</label>
+    <textarea id="dialogueScript" rows="6" placeholder="Enter dialogue lines...\n[speaker:wizard] Hello!\n[emotion:excited] Let's go!"></textarea>
+    <button onclick="runDialogue()">Run Dialogue</button>
+  </section>
+
+  <section>
+    <h3>Audio Files</h3>
+    <button onclick="refreshAudio()">Refresh List</button>
+    <ul id="audioList" class="audio-list"></ul>
+  </section>
+
+  <section>
+    <h3>Status</h3>
+    <div id="status" class="status"></div>
+  </section>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    function setStatus(text) { $('#status').textContent = text; }
+
+    async function refreshSpeakers() {
+      const res = await fetch('/api/speakers');
+      const data = await res.json();
+      const sel = $('#speakerSelect');
+      sel.innerHTML = '';
+      (data.speakers || []).forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = id; sel.appendChild(opt);
+      });
+    }
+
+    async function deleteSpeaker() {
+      const id = $('#speakerSelect').value;
+      if (!id) return;
+      const form = new FormData();
+      form.append('speaker_id', id);
+      const res = await fetch('/api/delete_speaker', { method: 'POST', body: form });
+      setStatus('Deleted: ' + id);
+      refreshSpeakers();
+    }
+
+    async function applyConfig() {
+      const form = new FormData();
+      const out = $('#outputDir').value.trim();
+      const db = $('#speakerDb').value.trim();
+      if (out) form.append('output_dir', out);
+      if (db) form.append('speaker_db', db);
+      const res = await fetch('/api/config', { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus('Config applied: ' + JSON.stringify(data));
+      refreshAudio();
+      refreshSpeakers();
+    }
+
+    async function extractEmbedding() {
+      const audio = $('#extractAudio').files[0];
+      const transcript = $('#extractTranscript').value;
+      const speakerId = $('#extractSpeakerId').value;
+      const form = new FormData();
+      form.append('audio', audio);
+      form.append('transcript', transcript);
+      form.append('speaker_id', speakerId);
+      setStatus('Extracting...');
+      const res = await fetch('/api/extract', { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus(JSON.stringify(data, null, 2));
+      refreshSpeakers();
+    }
+
+    async function addEmbedding() {
+      const file = $('#embeddingFile').files[0];
+      const speakerId = $('#embeddingSpeakerId').value;
+      const transcript = $('#embeddingTranscript').value;
+      const form = new FormData();
+      form.append('embedding_file', file);
+      form.append('speaker_id', speakerId);
+      form.append('transcript', transcript);
+      setStatus('Adding speaker...');
+      const res = await fetch('/api/add_embedding', { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus(JSON.stringify(data, null, 2));
+      refreshSpeakers();
+    }
+
+    async function synthesize() {
+      const form = new FormData();
+      form.append('text', $('#synthText').value);
+      form.append('output_name', $('#synthOutput').value);
+      form.append('speaker_id', $('#synthSpeaker').value);
+      form.append('emotion', $('#synthEmotion').value);
+      form.append('tone', $('#synthTone').value);
+      form.append('speed', $('#synthSpeed').value);
+      form.append('language', $('#synthLanguage').value);
+      if ($('#synthPromptAudio').files[0]) {
+        form.append('prompt_audio', $('#synthPromptAudio').files[0]);
+      }
+      form.append('prompt_text', $('#synthPromptText').value);
+      setStatus('Synthesizing...');
+      const res = await fetch('/api/synthesize', { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus(JSON.stringify(data, null, 2));
+      if (data.output_path) {
+        const a = document.createElement('audio');
+        a.controls = true;
+        // route through API for dynamic output dir awareness
+        const name = data.output_path.split(/[/\\]/).pop();
+        a.src = '/api/audio/' + name;
+        $('#synthResult').innerHTML = '';
+        $('#synthResult').appendChild(a);
+      }
+      refreshAudio();
+    }
+
+    async function runDialogue() {
+      const form = new FormData();
+      form.append('dialogue_name', $('#dialogueName').value);
+      form.append('default_speaker', $('#dialogueSpeaker').value);
+      form.append('script_text', $('#dialogueScript').value);
+      setStatus('Running dialogue...');
+      const res = await fetch('/api/dialogue', { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus(JSON.stringify(data, null, 2));
+      refreshAudio();
+    }
+
+    async function refreshAudio() {
+      const res = await fetch('/api/audio_list');
+      const data = await res.json();
+      const ul = $('#audioList');
+      ul.innerHTML = '';
+      (data.audio || []).forEach(item => {
+        const li = document.createElement('li');
+        const a = document.createElement('audio');
+        a.controls = true;
+        a.src = item.path; // served by /api/audio/{name}
+        const cap = document.createElement('div');
+        cap.textContent = item.name + ' (' + Math.round(item.size/1024) + ' KB)';
+        li.appendChild(cap);
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+    }
+
+    async function init() {
+      try {
+        const statsRes = await fetch('/api/stats');
+        const stats = await statsRes.json();
+        $('#outputDir').value = stats.output_base_dir || '';
+        $('#speakerDb').value = stats.speaker_database_path || '';
+      } catch (e) {}
+      refreshSpeakers();
+      refreshAudio();
+    }
+
+    init();
+  </script>
+</body>
+</html>
