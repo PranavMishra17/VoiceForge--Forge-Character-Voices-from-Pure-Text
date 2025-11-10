@@ -194,7 +194,15 @@ python main.py --mode synthesize --text "Debug test" --output_name debug_test --
 
 ### 📝 Enhanced Dialogue Script Format
 
-**Basic Format:**
+**Supported Parameters:**
+- `speaker` - Speaker ID (must be previously extracted)
+- `language` or `lang` - Target language (english, chinese, japanese, etc.)
+- `emotion` - Emotion keyword (happy, sad, angry, excited, etc.)
+- `tone` or `style` - Tone specification (formal, casual, dramatic, etc.)
+- `instruction` - Natural language instruction for voice modulation
+- `speed` - Speech speed multiplier (0.5-2.0, default 1.0)
+
+**Format Examples:**
 ```text
 Hello, how are you doing today?
 
@@ -207,7 +215,21 @@ Hello, how are you doing today?
 [speaker:elf_voice,emotion:gentle,tone:formal] Your Majesty, the realm is at peace.
 
 [speaker:narrator,instruction:speak dramatically] The dragon awakened from its slumber.
+
+[language:english,speaker:guide_voice] Welcome to our magical world!
+
+[language:japanese,emotion:happy] ようこそ、魔法の世界へ！
+
+[speaker:wizard,tone:mysterious,speed:0.8] Ancient secrets lie hidden...
+
+[language:chinese,emotion:excited,speed:1.2] 这真是太棒了！
 ```
+
+**Important Notes:**
+- Language is specified via parameter, NOT via instruction text
+- Parameters can be combined using commas
+- Parameters are case-insensitive
+- Missing speaker_id uses the default speaker
 
 ### 🎭 Available Emotions
 - `happy` - Joy and happiness
@@ -235,13 +257,33 @@ Hello, how are you doing today?
 - `shouting` - Loud and forceful
 
 ### 🌍 Supported Languages
-- `chinese` - Chinese (Mandarin)
+
+**Primary Languages:**
+- `chinese` / `mandarin` - Chinese (Mandarin)
 - `english` - English
-- `japanese` - Japanese
+- `japanese` - Japanese (fixed from `jp` to `ja`)
 - `korean` - Korean
-- `cantonese` - Cantonese
-- `sichuanese` - Sichuanese dialect
-- `shanghainese` - Shanghainese dialect
+
+**Chinese Dialects:**
+- `cantonese` / `yue` - Cantonese (Yue Chinese)
+- `shanghainese` / `wuyu` - Shanghainese (Wu Chinese)
+- `minnan` - Min Nan (Southern Min Chinese)
+- `sichuanese` - Sichuanese dialect (generic dialect tag)
+- `tianjinese` - Tianjinese dialect (generic dialect tag)
+- `wuhanese` - Wuhanese dialect (generic dialect tag)
+
+**Mixed Language:**
+- `zh/en` or `en/zh` - Chinese-English code-switching
+- `mixed` - Mixed language (defaults to zh/en)
+
+**Additional Languages** (via tokenizer support):
+- `german`, `spanish`, `russian`, `french`, `portuguese`, `turkish`
+- `polish`, `catalan`, `dutch`, `arabic`, `swedish`, `italian`
+- `indonesian`, `hindi`, `finnish`, `vietnamese`, `hebrew`
+- `ukrainian`, `greek`, `malay`, `czech`, `romanian`
+- `danish`, `hungarian`, `tamil`, `norwegian`, `thai`
+
+**Note:** Language is specified via tags (e.g., `<|zh|>`, `<|en|>`) prepended to the text. The model uses these tags to determine the output language, NOT via instruction text.
 
 ### ⚡ Speed Control
 - `0.5` - Very slow
