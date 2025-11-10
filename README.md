@@ -57,7 +57,50 @@ VoiceForge/
     └── logs/                        # Application logs
 ```
 
-## 💫 Usage Examples
+## 🌐 Web UI (Recommended)
+
+VoiceForge includes a beautiful web interface that makes voice generation easy and intuitive!
+
+**Start the Web Server:**
+```bash
+python ui_server.py
+```
+
+Then open your browser to: **http://localhost:8008**
+
+### ✨ Web UI Features:
+
+- **🎤 Speech Synthesis** - Generate speech with full control over:
+  - **Language** - 40+ languages with easy dropdown selection
+  - **Emotion** - Happy, sad, angry, excited, calm, and more
+  - **Tone** - Formal, casual, whispering, shouting, etc.
+  - **Speed** - Adjust speech rate (0.5x - 2.0x)
+  - **Custom Instructions** - Natural language voice modulation
+
+- **🎙️ Speaker Management** - Extract, add, and manage voice embeddings
+- **📜 Dialogue Processing** - Process entire scripts with character tags
+- **🎵 Audio Playback** - Listen to generated audio directly in browser
+- **⚙️ Live Configuration** - Change settings without restarting
+
+### 📸 Web UI Screenshot:
+
+The web interface provides:
+- Dropdown menus for all emotions, tones, and languages
+- Real-time audio playback
+- Visual feedback and status updates
+- Organized sections for each operation
+- Helpful hints and examples
+
+**Why use the Web UI?**
+- ✅ No command-line knowledge needed
+- ✅ Visual feedback and error messages
+- ✅ Easy parameter selection with dropdowns
+- ✅ Instant audio playback
+- ✅ Perfect for experimentation and testing
+
+---
+
+## 💫 Usage Examples (Command Line)
 
 ### 🎭 Basic Operations
 
@@ -194,7 +237,15 @@ python main.py --mode synthesize --text "Debug test" --output_name debug_test --
 
 ### 📝 Enhanced Dialogue Script Format
 
-**Basic Format:**
+**Supported Parameters:**
+- `speaker` - Speaker ID (must be previously extracted)
+- `language` or `lang` - Target language (english, chinese, japanese, etc.)
+- `emotion` - Emotion keyword (happy, sad, angry, excited, etc.)
+- `tone` or `style` - Tone specification (formal, casual, dramatic, etc.)
+- `instruction` - Natural language instruction for voice modulation
+- `speed` - Speech speed multiplier (0.5-2.0, default 1.0)
+
+**Format Examples:**
 ```text
 Hello, how are you doing today?
 
@@ -207,7 +258,21 @@ Hello, how are you doing today?
 [speaker:elf_voice,emotion:gentle,tone:formal] Your Majesty, the realm is at peace.
 
 [speaker:narrator,instruction:speak dramatically] The dragon awakened from its slumber.
+
+[language:english,speaker:guide_voice] Welcome to our magical world!
+
+[language:japanese,emotion:happy] ようこそ、魔法の世界へ！
+
+[speaker:wizard,tone:mysterious,speed:0.8] Ancient secrets lie hidden...
+
+[language:chinese,emotion:excited,speed:1.2] 这真是太棒了！
 ```
+
+**Important Notes:**
+- Language is specified via parameter, NOT via instruction text
+- Parameters can be combined using commas
+- Parameters are case-insensitive
+- Missing speaker_id uses the default speaker
 
 ### 🎭 Available Emotions
 - `happy` - Joy and happiness
@@ -235,13 +300,33 @@ Hello, how are you doing today?
 - `shouting` - Loud and forceful
 
 ### 🌍 Supported Languages
-- `chinese` - Chinese (Mandarin)
+
+**Primary Languages:**
+- `chinese` / `mandarin` - Chinese (Mandarin)
 - `english` - English
-- `japanese` - Japanese
+- `japanese` - Japanese (fixed from `jp` to `ja`)
 - `korean` - Korean
-- `cantonese` - Cantonese
-- `sichuanese` - Sichuanese dialect
-- `shanghainese` - Shanghainese dialect
+
+**Chinese Dialects:**
+- `cantonese` / `yue` - Cantonese (Yue Chinese)
+- `shanghainese` / `wuyu` - Shanghainese (Wu Chinese)
+- `minnan` - Min Nan (Southern Min Chinese)
+- `sichuanese` - Sichuanese dialect (generic dialect tag)
+- `tianjinese` - Tianjinese dialect (generic dialect tag)
+- `wuhanese` - Wuhanese dialect (generic dialect tag)
+
+**Mixed Language:**
+- `zh/en` or `en/zh` - Chinese-English code-switching
+- `mixed` - Mixed language (defaults to zh/en)
+
+**Additional Languages** (via tokenizer support):
+- `german`, `spanish`, `russian`, `french`, `portuguese`, `turkish`
+- `polish`, `catalan`, `dutch`, `arabic`, `swedish`, `italian`
+- `indonesian`, `hindi`, `finnish`, `vietnamese`, `hebrew`
+- `ukrainian`, `greek`, `malay`, `czech`, `romanian`
+- `danish`, `hungarian`, `tamil`, `norwegian`, `thai`
+
+**Note:** Language is specified via tags (e.g., `<|zh|>`, `<|en|>`) prepended to the text. The model uses these tags to determine the output language, NOT via instruction text.
 
 ### ⚡ Speed Control
 - `0.5` - Very slow

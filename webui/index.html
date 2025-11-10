@@ -5,158 +5,369 @@
   <title>VoiceForge UI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
-    h1 { margin-bottom: 0; }
+    body {
+      font-family: system-ui, -apple-system, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 2.5em;
+    }
+    h1::before { content: "🎭 "; }
     small { color: #666; }
-    section { border: 1px solid #ddd; padding: 12px; margin: 12px 0; border-radius: 6px; }
-    label { display: block; margin: 6px 0 4px; font-weight: 600; }
-    input[type=text], textarea, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 8px 12px; border: 1px solid #999; background: #f6f6f6; border-radius: 4px; cursor: pointer; }
-    .row { display: flex; gap: 12px; }
-    .row > div { flex: 1; }
-    .audio-list li { margin: 6px 0; }
-    .status { white-space: pre-wrap; background: #f7f7f7; padding: 8px; border-radius: 4px; border: 1px solid #eee; }
+    section {
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    section h3 {
+      margin-top: 0;
+      color: #667eea;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 8px;
+    }
+    label {
+      display: block;
+      margin: 10px 0 4px;
+      font-weight: 600;
+      color: #555;
+    }
+    input[type=text], input[type=number], textarea, select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.3s;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 10px 0;
+    }
+    .audio-list li {
+      margin: 12px 0;
+      padding: 10px;
+      background: white;
+      border-radius: 6px;
+    }
+    .status {
+      white-space: pre-wrap;
+      background: #fff;
+      padding: 15px;
+      border-radius: 6px;
+      border: 2px solid #667eea;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .success { color: #22c55e; font-weight: 600; }
+    .error { color: #ef4444; font-weight: 600; }
+    audio { width: 100%; margin-top: 10px; }
+    #synthResult { margin-top: 15px; }
   </style>
 </head>
 <body>
-  <h1>VoiceForge</h1>
-  <small>Barebones UI for running the same operations as main.py</small>
+  <div class="container">
+    <h1>VoiceForge</h1>
+    <small>Advanced Text-to-Speech with Emotion, Tone, and Multilingual Support</small>
 
-  <section>
-    <h3>Configuration</h3>
-    <div class="row">
-      <div>
-        <label>Output Directory</label>
-        <input id="outputDir" type="text" placeholder="voiceforge_output" />
+    <section>
+      <h3>⚙️ Configuration</h3>
+      <div class="row">
+        <div>
+          <label>Output Directory</label>
+          <input id="outputDir" type="text" placeholder="voiceforge_output" />
+        </div>
+        <div>
+          <label>Speaker DB Path</label>
+          <input id="speakerDb" type="text" placeholder="voiceforge_output/speakers/speaker_database.json" />
+        </div>
       </div>
-      <div>
-        <label>Speaker DB Path</label>
-        <input id="speakerDb" type="text" placeholder="voiceforge_output/speakers/speaker_database.json" />
-      </div>
-    </div>
-    <button onclick="applyConfig()">Apply</button>
-  </section>
+      <button onclick="applyConfig()">Apply Configuration</button>
+    </section>
 
-  <section>
-    <h3>Speakers</h3>
-    <div class="row">
-      <div>
-        <label>Speaker</label>
-        <select id="speakerSelect"></select>
+    <section>
+      <h3>👥 Speakers</h3>
+      <div class="row">
+        <div>
+          <label>Available Speakers</label>
+          <select id="speakerSelect" size="1"></select>
+        </div>
+        <div style="align-self:end">
+          <button onclick="refreshSpeakers()">🔄 Refresh</button>
+          <button onclick="deleteSpeaker()" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%)">🗑️ Delete</button>
+        </div>
       </div>
-      <div style="align-self:end">
-        <button onclick="refreshSpeakers()">Refresh</button>
-        <button onclick="deleteSpeaker()">Delete</button>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section>
-    <h3>Extract Speaker Embedding</h3>
-    <label>Audio File</label>
-    <input id="extractAudio" type="file" accept="audio/*" />
-    <label>Transcript</label>
-    <input id="extractTranscript" type="text" placeholder="Short transcript of the audio" />
-    <label>Speaker ID</label>
-    <input id="extractSpeakerId" type="text" placeholder="unique_speaker_id" />
-    <button onclick="extractEmbedding()">Extract</button>
-  </section>
+    <section>
+      <h3>🎙️ Extract Speaker Embedding</h3>
+      <label>Audio File</label>
+      <input id="extractAudio" type="file" accept="audio/*" />
+      <div class="hint">Upload a clean audio sample of the speaker (WAV, MP3, FLAC)</div>
 
-  <section>
-    <h3>Add Speaker from Embedding File</h3>
-    <label>Embedding File (.npy or .json)</label>
-    <input id="embeddingFile" type="file" accept=".npy,.json" />
-    <label>Speaker ID</label>
-    <input id="embeddingSpeakerId" type="text" placeholder="unique_speaker_id" />
-    <label>Transcript / Prompt Text</label>
-    <input id="embeddingTranscript" type="text" placeholder="describe the speaker" />
-    <button onclick="addEmbedding()">Add Speaker</button>
-  </section>
+      <label>Transcript</label>
+      <input id="extractTranscript" type="text" placeholder="What the speaker says in the audio..." />
+      <div class="hint">Enter the exact transcript of the audio</div>
 
-  <section>
-    <h3>Synthesize Speech</h3>
-    <label>Text</label>
-    <textarea id="synthText" rows="3" placeholder="Text to synthesize..."></textarea>
-    <div class="row">
-      <div>
-        <label>Output Name</label>
-        <input id="synthOutput" type="text" placeholder="output_name" />
-      </div>
-      <div>
-        <label>Speaker (optional)</label>
-        <input id="synthSpeaker" type="text" placeholder="leave empty to use prompt audio" />
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>Emotion</label>
-        <input id="synthEmotion" type="text" placeholder="excited, calm, angry..." />
-      </div>
-      <div>
-        <label>Tone</label>
-        <input id="synthTone" type="text" placeholder="formal, casual, whispering..." />
-      </div>
-      <div>
-        <label>Speed</label>
-        <input id="synthSpeed" type="number" value="1.0" step="0.1" />
-      </div>
-      <div>
-        <label>Language</label>
-        <input id="synthLanguage" type="text" placeholder="english, chinese, japanese..." />
-      </div>
-    </div>
-    <label>Prompt Audio (optional)</label>
-    <input id="synthPromptAudio" type="file" accept="audio/*" />
-    <label>Prompt Text (optional)</label>
-    <input id="synthPromptText" type="text" />
-    <button onclick="synthesize()">Synthesize</button>
-    <div id="synthResult"></div>
-  </section>
+      <label>Speaker ID</label>
+      <input id="extractSpeakerId" type="text" placeholder="wizard_voice" />
+      <div class="hint">Unique identifier for this speaker</div>
 
-  <section>
-    <h3>Dialogue</h3>
-    <label>Dialogue Name</label>
-    <input id="dialogueName" type="text" placeholder="session_name" />
-    <label>Default Speaker</label>
-    <input id="dialogueSpeaker" type="text" placeholder="optional default speaker id" />
-    <label>Script</label>
-    <textarea id="dialogueScript" rows="6" placeholder="Enter dialogue lines...\n[speaker:wizard] Hello!\n[emotion:excited] Let's go!"></textarea>
-    <button onclick="runDialogue()">Run Dialogue</button>
-  </section>
+      <button onclick="extractEmbedding()">🎯 Extract Embedding</button>
+    </section>
 
-  <section>
-    <h3>Audio Files</h3>
-    <button onclick="refreshAudio()">Refresh List</button>
-    <ul id="audioList" class="audio-list"></ul>
-  </section>
+    <section>
+      <h3>📁 Add Speaker from Embedding File</h3>
+      <label>Embedding File (.npy or .json)</label>
+      <input id="embeddingFile" type="file" accept=".npy,.json" />
+      <div class="hint">Pre-extracted 192-dimensional speaker embedding</div>
 
-  <section>
-    <h3>Status</h3>
-    <div id="status" class="status"></div>
-  </section>
+      <label>Speaker ID</label>
+      <input id="embeddingSpeakerId" type="text" placeholder="custom_voice" />
+
+      <label>Transcript / Description</label>
+      <input id="embeddingTranscript" type="text" placeholder="Describe the speaker..." />
+
+      <button onclick="addEmbedding()">➕ Add Speaker</button>
+    </section>
+
+    <section>
+      <h3>🎤 Synthesize Speech</h3>
+      <label>Text to Synthesize</label>
+      <textarea id="synthText" rows="3" placeholder="Enter the text you want to convert to speech..."></textarea>
+
+      <div class="row">
+        <div>
+          <label>Output Name</label>
+          <input id="synthOutput" type="text" placeholder="my_audio" />
+          <div class="hint">Name for the generated audio file</div>
+        </div>
+        <div>
+          <label>Speaker ID (optional)</label>
+          <input id="synthSpeaker" type="text" placeholder="wizard_voice" />
+          <div class="hint">Use extracted speaker or leave empty for prompt audio</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Language</label>
+          <select id="synthLanguage">
+            <option value="">Auto-detect</option>
+            <optgroup label="Primary Languages">
+              <option value="english">English</option>
+              <option value="chinese">Chinese (Mandarin)</option>
+              <option value="japanese">Japanese</option>
+              <option value="korean">Korean</option>
+            </optgroup>
+            <optgroup label="Chinese Dialects">
+              <option value="cantonese">Cantonese</option>
+              <option value="shanghainese">Shanghainese (Wu)</option>
+              <option value="minnan">Min Nan</option>
+              <option value="sichuanese">Sichuanese</option>
+            </optgroup>
+            <optgroup label="European Languages">
+              <option value="german">German</option>
+              <option value="spanish">Spanish</option>
+              <option value="french">French</option>
+              <option value="italian">Italian</option>
+              <option value="russian">Russian</option>
+              <option value="portuguese">Portuguese</option>
+            </optgroup>
+            <optgroup label="Other Languages">
+              <option value="japanese">Japanese</option>
+              <option value="arabic">Arabic</option>
+              <option value="hindi">Hindi</option>
+              <option value="thai">Thai</option>
+              <option value="vietnamese">Vietnamese</option>
+            </optgroup>
+            <optgroup label="Mixed">
+              <option value="mixed">Chinese-English Mixed</option>
+            </optgroup>
+          </select>
+          <div class="hint">Output language (uses language tags)</div>
+        </div>
+
+        <div>
+          <label>Emotion</label>
+          <select id="synthEmotion">
+            <option value="">None</option>
+            <option value="happy">😊 Happy</option>
+            <option value="sad">😢 Sad</option>
+            <option value="angry">😠 Angry</option>
+            <option value="excited">🤩 Excited</option>
+            <option value="calm">😌 Calm</option>
+            <option value="nervous">😰 Nervous</option>
+            <option value="confident">😎 Confident</option>
+            <option value="mysterious">🤔 Mysterious</option>
+            <option value="dramatic">🎭 Dramatic</option>
+            <option value="gentle">🌸 Gentle</option>
+            <option value="energetic">⚡ Energetic</option>
+            <option value="romantic">💕 Romantic</option>
+          </select>
+          <div class="hint">Emotional expression</div>
+        </div>
+
+        <div>
+          <label>Tone</label>
+          <select id="synthTone">
+            <option value="">None</option>
+            <option value="formal">Formal</option>
+            <option value="casual">Casual</option>
+            <option value="professional">Professional</option>
+            <option value="friendly">Friendly</option>
+            <option value="serious">Serious</option>
+            <option value="playful">Playful</option>
+            <option value="authoritative">Authoritative</option>
+            <option value="whispering">Whispering</option>
+            <option value="shouting">Shouting</option>
+          </select>
+          <div class="hint">Speaking style</div>
+        </div>
+
+        <div>
+          <label>Speed</label>
+          <input id="synthSpeed" type="number" value="1.0" step="0.1" min="0.5" max="2.0" />
+          <div class="hint">0.5 = slow, 1.0 = normal, 2.0 = fast</div>
+        </div>
+      </div>
+
+      <label>Custom Instruction (optional)</label>
+      <input id="synthInstruction" type="text" placeholder="speak like an ancient wizard..." />
+      <div class="hint">Natural language instruction for voice modulation</div>
+
+      <label>Prompt Audio (optional - for voice cloning)</label>
+      <input id="synthPromptAudio" type="file" accept="audio/*" />
+      <div class="hint">Reference audio for real-time voice cloning</div>
+
+      <label>Prompt Text (optional)</label>
+      <input id="synthPromptText" type="text" placeholder="Transcript of prompt audio..." />
+
+      <button onclick="synthesize()">🎵 Synthesize Speech</button>
+      <div id="synthResult"></div>
+    </section>
+
+    <section>
+      <h3>📜 Dialogue Processing</h3>
+      <label>Dialogue Name</label>
+      <input id="dialogueName" type="text" placeholder="fantasy_story" />
+      <div class="hint">Name for this dialogue session</div>
+
+      <label>Default Speaker</label>
+      <input id="dialogueSpeaker" type="text" placeholder="narrator" />
+      <div class="hint">Default speaker for lines without speaker tag</div>
+
+      <label>Script</label>
+      <textarea id="dialogueScript" rows="8" placeholder="Enter dialogue lines...
+
+Examples:
+[speaker:wizard,emotion:happy] Greetings, traveler!
+[language:english,tone:formal] Welcome to our realm.
+[emotion:excited,speed:1.2] I can't wait!
+[language:chinese] 你好世界！"></textarea>
+      <div class="hint">Use tags: [speaker:id,language:lang,emotion:name,tone:style,speed:1.0]</div>
+
+      <button onclick="runDialogue()">▶️ Process Dialogue</button>
+    </section>
+
+    <section>
+      <h3>🎵 Generated Audio Files</h3>
+      <button onclick="refreshAudio()">🔄 Refresh List</button>
+      <ul id="audioList" class="audio-list"></ul>
+    </section>
+
+    <section>
+      <h3>📊 Status</h3>
+      <div id="status" class="status">Ready. Waiting for operations...</div>
+    </section>
+  </div>
 
   <script>
     const $ = sel => document.querySelector(sel);
-    function setStatus(text) { $('#status').textContent = text; }
+
+    function setStatus(text, isError = false) {
+      const statusEl = $('#status');
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + (isError ? 'error' : 'success');
+    }
 
     async function refreshSpeakers() {
-      const res = await fetch('/api/speakers');
-      const data = await res.json();
-      const sel = $('#speakerSelect');
-      sel.innerHTML = '';
-      (data.speakers || []).forEach(id => {
-        const opt = document.createElement('option');
-        opt.value = id; opt.textContent = id; sel.appendChild(opt);
-      });
+      try {
+        const res = await fetch('/api/speakers');
+        const data = await res.json();
+        const sel = $('#speakerSelect');
+        sel.innerHTML = '<option value="">-- Select Speaker --</option>';
+        (data.speakers || []).forEach(id => {
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = id;
+          sel.appendChild(opt);
+        });
+        setStatus(`Loaded ${data.speakers.length} speakers`);
+      } catch (e) {
+        setStatus('Error loading speakers: ' + e.message, true);
+      }
     }
 
     async function deleteSpeaker() {
       const id = $('#speakerSelect').value;
-      if (!id) return;
+      if (!id) {
+        setStatus('Please select a speaker to delete', true);
+        return;
+      }
+      if (!confirm(`Delete speaker "${id}"?`)) return;
+
       const form = new FormData();
       form.append('speaker_id', id);
       const res = await fetch('/api/delete_speaker', { method: 'POST', body: form });
-      setStatus('Deleted: ' + id);
+      const data = await res.json();
+      setStatus(`Deleted speaker: ${id}`);
       refreshSpeakers();
     }
 
@@ -166,9 +377,10 @@
       const db = $('#speakerDb').value.trim();
       if (out) form.append('output_dir', out);
       if (db) form.append('speaker_db', db);
+
       const res = await fetch('/api/config', { method: 'POST', body: form });
       const data = await res.json();
-      setStatus('Config applied: ' + JSON.stringify(data));
+      setStatus('Configuration applied successfully\n' + JSON.stringify(data, null, 2));
       refreshAudio();
       refreshSpeakers();
     }
@@ -177,89 +389,160 @@
       const audio = $('#extractAudio').files[0];
       const transcript = $('#extractTranscript').value;
       const speakerId = $('#extractSpeakerId').value;
+
+      if (!audio || !transcript || !speakerId) {
+        setStatus('Please provide audio, transcript, and speaker ID', true);
+        return;
+      }
+
       const form = new FormData();
       form.append('audio', audio);
       form.append('transcript', transcript);
       form.append('speaker_id', speakerId);
-      setStatus('Extracting...');
+
+      setStatus('Extracting speaker embedding...');
       const res = await fetch('/api/extract', { method: 'POST', body: form });
       const data = await res.json();
-      setStatus(JSON.stringify(data, null, 2));
-      refreshSpeakers();
+
+      if (data.ok) {
+        setStatus(`✅ Successfully extracted embedding for "${speakerId}"`);
+        refreshSpeakers();
+      } else {
+        setStatus('❌ Extraction failed\n' + JSON.stringify(data, null, 2), true);
+      }
     }
 
     async function addEmbedding() {
       const file = $('#embeddingFile').files[0];
       const speakerId = $('#embeddingSpeakerId').value;
       const transcript = $('#embeddingTranscript').value;
+
+      if (!file || !speakerId) {
+        setStatus('Please provide embedding file and speaker ID', true);
+        return;
+      }
+
       const form = new FormData();
       form.append('embedding_file', file);
       form.append('speaker_id', speakerId);
       form.append('transcript', transcript);
-      setStatus('Adding speaker...');
+
+      setStatus('Adding speaker from embedding...');
       const res = await fetch('/api/add_embedding', { method: 'POST', body: form });
       const data = await res.json();
-      setStatus(JSON.stringify(data, null, 2));
-      refreshSpeakers();
+
+      if (data.ok) {
+        setStatus(`✅ Successfully added speaker "${speakerId}"`);
+        refreshSpeakers();
+      } else {
+        setStatus('❌ Failed to add speaker\n' + JSON.stringify(data, null, 2), true);
+      }
     }
 
     async function synthesize() {
+      const text = $('#synthText').value;
+      const outputName = $('#synthOutput').value;
+
+      if (!text || !outputName) {
+        setStatus('Please provide text and output name', true);
+        return;
+      }
+
       const form = new FormData();
-      form.append('text', $('#synthText').value);
-      form.append('output_name', $('#synthOutput').value);
+      form.append('text', text);
+      form.append('output_name', outputName);
       form.append('speaker_id', $('#synthSpeaker').value);
+      form.append('instruction', $('#synthInstruction').value);
       form.append('emotion', $('#synthEmotion').value);
       form.append('tone', $('#synthTone').value);
       form.append('speed', $('#synthSpeed').value);
       form.append('language', $('#synthLanguage').value);
+
       if ($('#synthPromptAudio').files[0]) {
         form.append('prompt_audio', $('#synthPromptAudio').files[0]);
       }
       form.append('prompt_text', $('#synthPromptText').value);
-      setStatus('Synthesizing...');
+
+      setStatus('Synthesizing speech...\nLanguage: ' + ($('#synthLanguage').value || 'auto-detect') +
+                '\nEmotion: ' + ($('#synthEmotion').value || 'none') +
+                '\nTone: ' + ($('#synthTone').value || 'none') +
+                '\nSpeed: ' + $('#synthSpeed').value + 'x');
+
       const res = await fetch('/api/synthesize', { method: 'POST', body: form });
       const data = await res.json();
-      setStatus(JSON.stringify(data, null, 2));
-      if (data.output_path) {
+
+      if (data.ok && data.output_path) {
+        setStatus(`✅ Speech synthesized successfully!\nOutput: ${data.output_path}`);
+
         const a = document.createElement('audio');
         a.controls = true;
-        // route through API for dynamic output dir awareness
         const name = data.output_path.split(/[/\\]/).pop();
         a.src = '/api/audio/' + name;
-        $('#synthResult').innerHTML = '';
+        $('#synthResult').innerHTML = '<div style="margin-top: 15px; padding: 15px; background: white; border-radius: 6px;"><strong>🎵 Generated Audio:</strong></div>';
         $('#synthResult').appendChild(a);
+        refreshAudio();
+      } else {
+        setStatus('❌ Synthesis failed\n' + JSON.stringify(data, null, 2), true);
       }
-      refreshAudio();
     }
 
     async function runDialogue() {
+      const dialogueName = $('#dialogueName').value;
+      const scriptText = $('#dialogueScript').value;
+
+      if (!dialogueName || !scriptText) {
+        setStatus('Please provide dialogue name and script', true);
+        return;
+      }
+
       const form = new FormData();
-      form.append('dialogue_name', $('#dialogueName').value);
+      form.append('dialogue_name', dialogueName);
       form.append('default_speaker', $('#dialogueSpeaker').value);
-      form.append('script_text', $('#dialogueScript').value);
-      setStatus('Running dialogue...');
+      form.append('script_text', scriptText);
+
+      setStatus('Processing dialogue script...');
       const res = await fetch('/api/dialogue', { method: 'POST', body: form });
       const data = await res.json();
-      setStatus(JSON.stringify(data, null, 2));
-      refreshAudio();
+
+      if (data.ok) {
+        const count = data.results ? data.results.length : 0;
+        setStatus(`✅ Dialogue processed successfully!\nGenerated ${count} audio files`);
+        refreshAudio();
+      } else {
+        setStatus('❌ Dialogue processing failed\n' + JSON.stringify(data, null, 2), true);
+      }
     }
 
     async function refreshAudio() {
-      const res = await fetch('/api/audio_list');
-      const data = await res.json();
-      const ul = $('#audioList');
-      ul.innerHTML = '';
-      (data.audio || []).forEach(item => {
-        const li = document.createElement('li');
-        const a = document.createElement('audio');
-        a.controls = true;
-        a.src = item.path; // served by /api/audio/{name}
-        const cap = document.createElement('div');
-        cap.textContent = item.name + ' (' + Math.round(item.size/1024) + ' KB)';
-        li.appendChild(cap);
-        li.appendChild(a);
-        ul.appendChild(li);
-      });
+      try {
+        const res = await fetch('/api/audio_list');
+        const data = await res.json();
+        const ul = $('#audioList');
+        ul.innerHTML = '';
+
+        if (!data.audio || data.audio.length === 0) {
+          ul.innerHTML = '<li style="color: #888;">No audio files generated yet</li>';
+          return;
+        }
+
+        data.audio.forEach(item => {
+          const li = document.createElement('li');
+          const cap = document.createElement('div');
+          cap.style.fontWeight = '600';
+          cap.style.marginBottom = '5px';
+          cap.textContent = item.name + ' (' + Math.round(item.size/1024) + ' KB)';
+
+          const a = document.createElement('audio');
+          a.controls = true;
+          a.src = item.path;
+
+          li.appendChild(cap);
+          li.appendChild(a);
+          ul.appendChild(li);
+        });
+      } catch (e) {
+        setStatus('Error loading audio list: ' + e.message, true);
+      }
     }
 
     async function init() {
@@ -268,11 +551,15 @@
         const stats = await statsRes.json();
         $('#outputDir').value = stats.output_base_dir || '';
         $('#speakerDb').value = stats.speaker_database_path || '';
-      } catch (e) {}
+        setStatus(`✅ VoiceForge loaded successfully!\nSpeakers: ${stats.speaker_count || 0}\nModel: ${stats.model_path || 'N/A'}`);
+      } catch (e) {
+        setStatus('⚠️ Warning: Could not load initial stats\n' + e.message);
+      }
       refreshSpeakers();
       refreshAudio();
     }
 
+    // Initialize on load
     init();
   </script>
 </body>

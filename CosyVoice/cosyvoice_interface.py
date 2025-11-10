@@ -535,14 +535,20 @@ class CosyVoiceInterface:
             self.logger.error(f"Error in synthesize_speech: {e}")
             return None
 
-    def _build_enhanced_instruction(self, instruction: Optional[str], emotion: Optional[str], 
+    def _build_enhanced_instruction(self, instruction: Optional[str], emotion: Optional[str],
                                    tone: Optional[str], language: Optional[str]) -> Optional[str]:
-        """Build enhanced instruction text from parameters."""
+        """
+        Build enhanced instruction text from emotion and tone parameters.
+
+        IMPORTANT: Language is NOT included in instructions - language should ONLY be
+        specified via language tags (e.g., <|zh|>, <|en|>) prepended to the text.
+        Language instructions confuse the model and cause it to output in default language.
+        """
         parts = []
-        
+
         if instruction:
             parts.append(instruction)
-        
+
         if emotion:
             emotion_instructions = {
                 'happy': 'speak with joy and happiness',
@@ -562,7 +568,7 @@ class CosyVoiceInterface:
                 parts.append(emotion_instructions[emotion.lower()])
             else:
                 parts.append(f"speak with {emotion}")
-        
+
         if tone:
             tone_instructions = {
                 'formal': 'use a formal tone',
@@ -579,41 +585,90 @@ class CosyVoiceInterface:
                 parts.append(tone_instructions[tone.lower()])
             else:
                 parts.append(f"use a {tone} tone")
-        
-        if language:
-            language_map = {
-                'chinese': '用中文说',
-                'english': 'speak in English',
-                'japanese': '日本語で話す',
-                'korean': '한국어로 말하다',
-                'cantonese': '用粤语说',
-                'sichuanese': '用四川话说',
-                'shanghainese': '用上海话说'
-            }
-            if language.lower() in language_map:
-                parts.append(language_map[language.lower()])
-            else:
-                parts.append(f"speak in {language}")
-        
+
+        # NOTE: Language is intentionally NOT added here - it's handled via language tags
+        # Adding language instructions here causes the model to ignore language tags
+
         return ', '.join(parts) if parts else None
 
     def _preprocess_text_with_language(self, text: str, language: Optional[str]) -> str:
-        """Preprocess text with language tags for multilingual synthesis."""
+        """
+        Preprocess text with language tags for multilingual synthesis.
+
+        Language tags must be prepended to the text for CosyVoice to recognize the target language.
+        These tags are processed by the tokenizer and guide the model's language generation.
+
+        Supported languages based on CosyVoice tokenizer:
+        - Chinese/English/Japanese/Korean: Primary languages
+        - Cantonese/Minnan/Wuyu: Chinese dialects
+        - Many other languages via standard codes
+        """
         if not language:
             return text
-        
+
+        # Comprehensive language tag mapping based on CosyVoice tokenizer
+        # See CosyVoice/cosyvoice/tokenizer/tokenizer.py for full LANGUAGES dict
         language_tags = {
+            # Primary languages
             'chinese': '<|zh|>',
+            'mandarin': '<|zh|>',
             'english': '<|en|>',
-            'japanese': '<|jp|>',
+            'japanese': '<|ja|>',  # Fixed: was <|jp|>, should be <|ja|>
             'korean': '<|ko|>',
-            'cantonese': '<|yue|>'
+
+            # Chinese dialects and variants
+            'cantonese': '<|yue|>',
+            'yue': '<|yue|>',
+            'minnan': '<|minnan|>',
+            'wuyu': '<|wuyu|>',
+            'sichuanese': '<|dialect|>',  # Generic dialect tag for unsupported dialects
+            'shanghainese': '<|wuyu|>',  # Shanghai dialect is part of Wu Chinese
+            'tianjinese': '<|dialect|>',
+            'wuhanese': '<|dialect|>',
+
+            # Mixed language
+            'zh/en': '<|zh/en|>',
+            'en/zh': '<|en/zh|>',
+            'mixed': '<|zh/en|>',
+
+            # Additional languages supported by tokenizer
+            'german': '<|de|>',
+            'spanish': '<|es|>',
+            'russian': '<|ru|>',
+            'french': '<|fr|>',
+            'portuguese': '<|pt|>',
+            'turkish': '<|tr|>',
+            'polish': '<|pl|>',
+            'catalan': '<|ca|>',
+            'dutch': '<|nl|>',
+            'arabic': '<|ar|>',
+            'swedish': '<|sv|>',
+            'italian': '<|it|>',
+            'indonesian': '<|id|>',
+            'hindi': '<|hi|>',
+            'finnish': '<|fi|>',
+            'vietnamese': '<|vi|>',
+            'hebrew': '<|he|>',
+            'ukrainian': '<|uk|>',
+            'greek': '<|el|>',
+            'malay': '<|ms|>',
+            'czech': '<|cs|>',
+            'romanian': '<|ro|>',
+            'danish': '<|da|>',
+            'hungarian': '<|hu|>',
+            'tamil': '<|ta|>',
+            'norwegian': '<|no|>',
+            'thai': '<|th|>',
         }
-        
-        if language.lower() in language_tags:
-            return f"{language_tags[language.lower()]}{text}"
-        
-        return text
+
+        lang_lower = language.lower()
+        if lang_lower in language_tags:
+            tag = language_tags[lang_lower]
+            self.logger.info(f"Applying language tag: {tag} for language: {language}")
+            return f"{tag}{text}"
+        else:
+            self.logger.warning(f"Unknown language '{language}', no tag applied. Text will use default language detection.")
+            return text
 
     def _synthesize_with_speaker_id(self, text: str, output_path: str, speaker_id: str, speed: float = 1.0) -> Optional[str]:
         """Synthesize using saved speaker ID with optimized embedding loading."""
@@ -877,36 +932,44 @@ class CosyVoiceInterface:
                 
                 self.logger.info(f"Processing line {i}: {line[:50]}...")
                 
-                # Parse line for special formatting
-                text, speaker_id, instruction = self._parse_dialogue_line(line)
-                
+                # Parse line for special formatting with full parameter support
+                parsed = self._parse_dialogue_line(line)
+                text = parsed['text']
+                speaker_id = parsed.get('speaker_id')
+                instruction = parsed.get('instruction')
+                emotion = parsed.get('emotion')
+                tone = parsed.get('tone')
+                language = parsed.get('language')
+                speed = parsed.get('speed', 1.0)
+
                 # Use default speaker if none specified
                 if not speaker_id:
                     speaker_id = default_speaker_id
-                
+
                 # Generate output filename
                 output_filename = f"line_{i:03d}"
-                
-                # Synthesize
-                result_path = None
-                if instruction:
-                    self.logger.info(f"Using instruction: {instruction}")
-                    result_path = self._synthesize_with_instruction(
-                        text, str(dialogue_dir / output_filename), instruction, speaker_id
-                    )
-                elif speaker_id:
-                    self.logger.info(f"Using speaker: {speaker_id}")
-                    result_path = self._synthesize_with_speaker_id(
-                        text, str(dialogue_dir / output_filename), speaker_id
-                    )
-                else:
-                    self.logger.warning("No speaker or instruction specified")
-                
+
+                # Synthesize with full parameter support
+                result_path = self.synthesize_speech(
+                    text=text,
+                    output_filename=str(dialogue_dir / output_filename),
+                    speaker_id=speaker_id,
+                    instruction=instruction,
+                    emotion=emotion,
+                    tone=tone,
+                    speed=speed,
+                    language=language
+                )
+
                 results.append({
                     'line_number': i,
                     'text': text,
                     'speaker_id': speaker_id,
                     'instruction': instruction,
+                    'emotion': emotion,
+                    'tone': tone,
+                    'language': language,
+                    'speed': speed,
                     'output_path': result_path
                 })
             
@@ -920,34 +983,68 @@ class CosyVoiceInterface:
             self.logger.error(f"Error processing dialogue script: {e}")
             return []
 
-    def _parse_dialogue_line(self, line: str) -> tuple:
-        """Parse dialogue line for speaker/instruction tags."""
-        speaker_id = None
-        instruction = None
-        text = line
-        
+    def _parse_dialogue_line(self, line: str) -> dict:
+        """
+        Parse dialogue line for speaker/instruction/emotion/tone/language/speed tags.
+
+        Supported tags:
+        - speaker: Speaker ID
+        - instruction: Natural language instruction for voice modulation
+        - emotion: Emotion keyword (happy, sad, angry, etc.)
+        - tone: Tone specification (formal, casual, dramatic, etc.)
+        - language: Language for synthesis (english, chinese, japanese, etc.)
+        - speed: Speech speed multiplier (0.5-2.0)
+
+        Example formats:
+        - [speaker:wizard_voice] Hello there!
+        - [speaker:wizard_voice,emotion:excited] I'm so happy!
+        - [speaker:narrator,tone:dramatic,language:english] Once upon a time...
+        - [emotion:sad,tone:whispering,speed:0.8] I'm so sorry...
+        """
+        result = {
+            'text': line,
+            'speaker_id': None,
+            'instruction': None,
+            'emotion': None,
+            'tone': None,
+            'language': None,
+            'speed': 1.0
+        }
+
         if line.startswith('[') and ']' in line:
             tag_end = line.find(']')
             tag_content = line[1:tag_end]
-            text = line[tag_end+1:].strip()
-            
+            result['text'] = line[tag_end+1:].strip()
+
             for param in tag_content.split(','):
                 param = param.strip()
                 if ':' in param:
                     key, value = param.split(':', 1)
                     key = key.strip().lower()
                     value = value.strip()
-                    
-                    if key == 'speaker':
-                        speaker_id = value
-                    elif key in ['instruction', 'emotion', 'style']:
-                        instruction = value
-        
-        return text, speaker_id, instruction
 
-    def _save_dialogue_report(self, dialogue_dir: Path, script_path: Path, 
+                    if key == 'speaker':
+                        result['speaker_id'] = value
+                    elif key == 'instruction':
+                        result['instruction'] = value
+                    elif key == 'emotion':
+                        result['emotion'] = value
+                    elif key in ['tone', 'style']:  # 'style' is alias for 'tone'
+                        result['tone'] = value
+                    elif key in ['language', 'lang']:  # 'lang' is alias for 'language'
+                        result['language'] = value
+                    elif key == 'speed':
+                        try:
+                            result['speed'] = float(value)
+                        except ValueError:
+                            self.logger.warning(f"Invalid speed value '{value}', using default 1.0")
+                            result['speed'] = 1.0
+
+        return result
+
+    def _save_dialogue_report(self, dialogue_dir: Path, script_path: Path,
                              default_speaker_id: str, results: List[Dict[str, Any]]):
-        """Save dialogue processing report."""
+        """Save comprehensive dialogue processing report with all parameters."""
         try:
             report_path = dialogue_dir / 'processing_report.txt'
             with open(report_path, 'w', encoding='utf-8') as f:
@@ -957,17 +1054,25 @@ class CosyVoiceInterface:
                 f.write(f"Default Speaker: {default_speaker_id}\n")
                 f.write(f"Processed: {len(results)} lines\n")
                 f.write(f"Generated: {datetime.now().isoformat()}\n\n")
-                
+
                 for result in results:
                     f.write(f"Line {result['line_number']}: {result['text'][:50]}...\n")
-                    if result['speaker_id']:
+                    if result.get('speaker_id'):
                         f.write(f"  Speaker: {result['speaker_id']}\n")
-                    if result['instruction']:
+                    if result.get('language'):
+                        f.write(f"  Language: {result['language']}\n")
+                    if result.get('emotion'):
+                        f.write(f"  Emotion: {result['emotion']}\n")
+                    if result.get('tone'):
+                        f.write(f"  Tone: {result['tone']}\n")
+                    if result.get('instruction'):
                         f.write(f"  Instruction: {result['instruction']}\n")
+                    if result.get('speed') and result['speed'] != 1.0:
+                        f.write(f"  Speed: {result['speed']}x\n")
                     f.write(f"  Output: {result['output_path']}\n\n")
-            
+
             self.logger.info(f"Saved dialogue report: {report_path}")
-            
+
         except Exception as e:
             self.logger.error(f"Error saving dialogue report: {e}")
 
