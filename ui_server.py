@@ -133,7 +133,7 @@ async def api_synthesize(
         speaker_id=speaker_id if speaker_id else None,
         prompt_audio=prompt_audio_path,
         prompt_text=prompt_text,
-        instruction=instruction,
+        instruction=instruction if instruction else None,
         emotion=emotion if emotion else None,
         tone=tone if tone else None,
         speed=float(speed) if speed else 1.0,

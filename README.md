@@ -57,7 +57,50 @@ VoiceForge/
     └── logs/                        # Application logs
 ```
 
-## 💫 Usage Examples
+## 🌐 Web UI (Recommended)
+
+VoiceForge includes a beautiful web interface that makes voice generation easy and intuitive!
+
+**Start the Web Server:**
+```bash
+python ui_server.py
+```
+
+Then open your browser to: **http://localhost:8008**
+
+### ✨ Web UI Features:
+
+- **🎤 Speech Synthesis** - Generate speech with full control over:
+  - **Language** - 40+ languages with easy dropdown selection
+  - **Emotion** - Happy, sad, angry, excited, calm, and more
+  - **Tone** - Formal, casual, whispering, shouting, etc.
+  - **Speed** - Adjust speech rate (0.5x - 2.0x)
+  - **Custom Instructions** - Natural language voice modulation
+
+- **🎙️ Speaker Management** - Extract, add, and manage voice embeddings
+- **📜 Dialogue Processing** - Process entire scripts with character tags
+- **🎵 Audio Playback** - Listen to generated audio directly in browser
+- **⚙️ Live Configuration** - Change settings without restarting
+
+### 📸 Web UI Screenshot:
+
+The web interface provides:
+- Dropdown menus for all emotions, tones, and languages
+- Real-time audio playback
+- Visual feedback and status updates
+- Organized sections for each operation
+- Helpful hints and examples
+
+**Why use the Web UI?**
+- ✅ No command-line knowledge needed
+- ✅ Visual feedback and error messages
+- ✅ Easy parameter selection with dropdowns
+- ✅ Instant audio playback
+- ✅ Perfect for experimentation and testing
+
+---
+
+## 💫 Usage Examples (Command Line)
 
 ### 🎭 Basic Operations
 
