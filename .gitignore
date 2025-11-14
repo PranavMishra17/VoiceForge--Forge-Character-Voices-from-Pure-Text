@@ -181,3 +181,4 @@ cython_debug/
 .cursorindexingignore
 /TTS
 ENHANCED_FEATURES.md
+/pretrained_models
