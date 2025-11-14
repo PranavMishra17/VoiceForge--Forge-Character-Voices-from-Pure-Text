@@ -181,3 +181,5 @@ cython_debug/
 .cursorindexingignore
 /TTS
 ENHANCED_FEATURES.md
+/test/output
+/voiceforge_output
