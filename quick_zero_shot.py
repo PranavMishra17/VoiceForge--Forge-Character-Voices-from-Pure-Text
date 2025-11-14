@@ -12,11 +12,11 @@ sys.path.insert(0, '.')
 from wrapper import VoiceSynthesizer
 
 # ===== CONFIGURE THESE =====
-TEXT_TO_SYNTHESIZE = "Hello, this is a test of voice cloning technology."
-PROMPT_AUDIO_PATH = "path/to/your/audio_sample.wav"  # 3-10 second audio sample
-PROMPT_TEXT = "This is what the speaker says in the audio sample."  # Transcription
+TEXT_TO_SYNTHESIZE = "Hello, this is a test of voice cloning technology. I have seen many beautiful places in my life. Beaches and mountains alike."  # Text to synthesize
+PROMPT_AUDIO_PATH = "examples\\i have seen.wav"  # 3-10 second audio sample
+PROMPT_TEXT = "I have seen snowy mountains, stretched dizzingly to the end of sight."  # Transcription
 SPEED = 1.0  # 0.5 to 2.0
-OUTPUT_FILENAME = "cloned_voice.wav"  # Optional
+OUTPUT_FILENAME = "have_seen_voice.wav"  # Optional
 # ===========================
 
 def main():

@@ -259,7 +259,17 @@ class VoiceSynthesizer:
 
             # Save audio
             output_path = self.config.get_output_path('tts', output_filename)
-            torchaudio.save(str(output_path), final_audio, self.sample_rate)
+            try:
+                torchaudio.save(str(output_path), final_audio, self.sample_rate)
+            except RuntimeError as e:
+                if "torchcodec" in str(e).lower() or "ffmpeg" in str(e).lower():
+                    logger.info("Falling back to soundfile for audio saving...")
+                    import soundfile as sf
+                    # Convert tensor to numpy for soundfile
+                    audio_numpy = final_audio.squeeze().numpy()
+                    sf.write(str(output_path), audio_numpy, self.sample_rate)
+                else:
+                    raise
 
             logger.info(f"Synthesis completed. Saved to: {output_path}")
 
@@ -678,7 +688,21 @@ class VoiceSynthesizer:
             if not os.path.exists(audio_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-            waveform, sample_rate = torchaudio.load(audio_path)
+            # Try torchaudio first, fall back to soundfile if torchcodec fails
+            try:
+                waveform, sample_rate = torchaudio.load(audio_path)
+            except RuntimeError as e:
+                if "torchcodec" in str(e).lower() or "ffmpeg" in str(e).lower():
+                    logger.info("Falling back to soundfile for audio loading...")
+                    import soundfile as sf
+                    audio_data, sample_rate = sf.read(audio_path)
+                    # Convert to torch tensor and add channel dimension
+                    waveform = torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0)
+                    if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
+                        # Multi-channel audio, convert to mono
+                        waveform = torch.mean(waveform, dim=1, keepdim=True)
+                else:
+                    raise
 
             # Convert to mono if stereo
             if waveform.shape[0] > 1:
