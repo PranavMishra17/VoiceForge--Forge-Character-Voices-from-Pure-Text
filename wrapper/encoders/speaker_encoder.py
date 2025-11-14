@@ -8,6 +8,7 @@ import os
 import logging
 import torch
 import torchaudio
+import librosa
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
@@ -19,6 +20,7 @@ sys.path.append('cosyvoice')
 sys.path.append('cosyvoice/third_party/Matcha-TTS')
 
 from cosyvoice.cli.cosyvoice import CosyVoice2
+from cosyvoice.utils.file_utils import load_wav
 
 # Setup logging
 logging.basicConfig(
@@ -26,6 +28,24 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def postprocess(speech, top_db=60, hop_length=220, win_length=440, max_val=0.8):
+    """
+    Postprocess audio like official CosyVoice webui
+    Trims silence and normalizes audio
+    """
+    speech_np = speech.squeeze().cpu().numpy()
+    speech_np, _ = librosa.effects.trim(
+        speech_np,
+        top_db=top_db,
+        frame_length=win_length,
+        hop_length=hop_length
+    )
+    speech = torch.from_numpy(speech_np).unsqueeze(0)
+    if speech.abs().max() > max_val:
+        speech = speech / speech.abs().max() * max_val
+    return speech
 
 
 class SpeakerEncoder:
@@ -82,7 +102,11 @@ class SpeakerEncoder:
         target_sr: int = 16000
     ) -> torch.Tensor:
         """
-        Load and preprocess audio file
+        Load and preprocess audio file using official CosyVoice methods
+
+        This matches the official webui.py behavior:
+        1. Load with load_wav() (uses soundfile backend)
+        2. Apply postprocess() to trim and normalize
 
         Args:
             audio_path: Path to audio file
@@ -97,24 +121,13 @@ class SpeakerEncoder:
             if not os.path.exists(audio_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-            # Load audio
-            waveform, sample_rate = torchaudio.load(audio_path)
+            # Use official CosyVoice load_wav function
+            waveform = load_wav(audio_path, target_sr)
 
-            # Convert to mono if stereo
-            if waveform.shape[0] > 1:
-                waveform = torch.mean(waveform, dim=0, keepdim=True)
-                logger.info("Converted stereo to mono")
+            # Apply postprocessing: trim silence and normalize
+            waveform = postprocess(waveform)
 
-            # Resample if necessary
-            if sample_rate != target_sr:
-                resampler = torchaudio.transforms.Resample(
-                    orig_freq=sample_rate,
-                    new_freq=target_sr
-                )
-                waveform = resampler(waveform)
-                logger.info(f"Resampled from {sample_rate}Hz to {target_sr}Hz")
-
-            logger.info(f"Audio loaded successfully: shape={waveform.shape}")
+            logger.info(f"Audio loaded and preprocessed: shape={waveform.shape}")
             return waveform
 
         except Exception as e:
