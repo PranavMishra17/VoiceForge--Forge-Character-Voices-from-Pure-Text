@@ -182,3 +182,4 @@ cython_debug/
 /TTS
 ENHANCED_FEATURES.md
 /pretrained_models
+/test_outputs
