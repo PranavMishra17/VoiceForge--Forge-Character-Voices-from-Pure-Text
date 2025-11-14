@@ -298,7 +298,17 @@ class VoiceSynthesizer:
 
             # Save audio
             output_path = self.config.get_output_path('tts', output_filename)
-            torchaudio.save(str(output_path), final_audio, self.sample_rate)
+            try:
+                torchaudio.save(str(output_path), final_audio, self.sample_rate)
+            except RuntimeError as e:
+                if "torchcodec" in str(e).lower() or "ffmpeg" in str(e).lower():
+                    logger.info("Falling back to soundfile for audio saving...")
+                    import soundfile as sf
+                    # Convert tensor to numpy for soundfile
+                    audio_numpy = final_audio.squeeze().numpy()
+                    sf.write(str(output_path), audio_numpy, self.sample_rate)
+                else:
+                    raise
 
             logger.info(f"Synthesis completed. Saved to: {output_path}")
 
