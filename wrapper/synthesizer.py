@@ -8,6 +8,8 @@ import os
 import logging
 import torch
 import torchaudio
+import librosa
+import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, Union, List
 from datetime import datetime
@@ -17,6 +19,7 @@ sys.path.append('cosyvoice')
 sys.path.append('cosyvoice/third_party/Matcha-TTS')
 
 from cosyvoice.cli.cosyvoice import CosyVoice2
+from cosyvoice.utils.file_utils import load_wav
 from wrapper.config import VoiceForgeConfig
 
 # Setup logging
@@ -25,6 +28,42 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def postprocess(speech, top_db=60, hop_length=220, win_length=440, max_val=0.8):
+    """
+    Postprocess audio like official CosyVoice webui
+    Trims silence and normalizes audio
+
+    Args:
+        speech: Audio tensor [1, samples]
+        top_db: Threshold for silence removal
+        hop_length: Hop length for librosa
+        win_length: Window length for librosa
+        max_val: Maximum value for normalization
+
+    Returns:
+        Processed audio tensor
+    """
+    # Convert to numpy for librosa
+    speech_np = speech.squeeze().cpu().numpy()
+
+    # Trim silence
+    speech_np, _ = librosa.effects.trim(
+        speech_np,
+        top_db=top_db,
+        frame_length=win_length,
+        hop_length=hop_length
+    )
+
+    # Convert back to tensor
+    speech = torch.from_numpy(speech_np).unsqueeze(0)
+
+    # Normalize
+    if speech.abs().max() > max_val:
+        speech = speech / speech.abs().max() * max_val
+
+    return speech
 
 
 class VoiceSynthesizer:
@@ -681,41 +720,28 @@ class VoiceSynthesizer:
     # Helper methods
 
     def _load_audio(self, audio_path: str, target_sr: int = 16000) -> torch.Tensor:
-        """Load and preprocess audio file"""
+        """
+        Load and preprocess audio file using official CosyVoice methods
+
+        This matches the official webui.py behavior:
+        1. Load with load_wav() (uses soundfile backend)
+        2. Apply postprocess() to trim and normalize
+        """
         try:
             logger.info(f"Loading audio from {audio_path}...")
 
             if not os.path.exists(audio_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-            # Try torchaudio first, fall back to soundfile if torchcodec fails
-            try:
-                waveform, sample_rate = torchaudio.load(audio_path)
-            except RuntimeError as e:
-                if "torchcodec" in str(e).lower() or "ffmpeg" in str(e).lower():
-                    logger.info("Falling back to soundfile for audio loading...")
-                    import soundfile as sf
-                    audio_data, sample_rate = sf.read(audio_path)
-                    # Convert to torch tensor and add channel dimension
-                    waveform = torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0)
-                    if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
-                        # Multi-channel audio, convert to mono
-                        waveform = torch.mean(waveform, dim=1, keepdim=True)
-                else:
-                    raise
+            # Use official CosyVoice load_wav function
+            # This handles: mono conversion, resampling, proper backend
+            waveform = load_wav(audio_path, target_sr)
 
-            # Convert to mono if stereo
-            if waveform.shape[0] > 1:
-                waveform = torch.mean(waveform, dim=0, keepdim=True)
+            # Apply postprocessing: trim silence and normalize
+            # This is CRITICAL - without this, output is gibberish!
+            waveform = postprocess(waveform)
 
-            # Resample if necessary
-            if sample_rate != target_sr:
-                resampler = torchaudio.transforms.Resample(
-                    orig_freq=sample_rate,
-                    new_freq=target_sr
-                )
-                waveform = resampler(waveform)
-
+            logger.info(f"Audio loaded and preprocessed: shape={waveform.shape}")
             return waveform
 
         except Exception as e:
