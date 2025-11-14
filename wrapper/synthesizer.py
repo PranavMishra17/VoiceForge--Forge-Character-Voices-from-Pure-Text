@@ -79,21 +79,27 @@ class VoiceSynthesizer:
     def synthesize_simple(
         self,
         text: str,
+        speaker_id: Optional[str] = None,
         language: Optional[str] = None,
         speed: float = 1.0,
         output_filename: Optional[str] = None,
-        stream: bool = False
+        stream: bool = False,
+        text_frontend: bool = True
     ) -> Dict[str, Any]:
         """
-        Simple TTS synthesis with default English voice
-        This is a convenience method for quick synthesis
+        Simple TTS synthesis using built-in speakers (SFT mode)
+
+        Note: This requires the model to have pre-trained speakers.
+        Use synthesize_zero_shot() with audio samples if no speakers available.
 
         Args:
             text: Text to synthesize
+            speaker_id: Speaker ID from model's built-in speakers
             language: Language code ('en' or 'zh'), defaults to English
             speed: Speech speed (0.5 to 2.0, default 1.0)
             output_filename: Optional output filename
             stream: Whether to use streaming synthesis
+            text_frontend: Whether to use text normalization
 
         Returns:
             Dictionary with synthesis results
@@ -105,19 +111,71 @@ class VoiceSynthesizer:
             language = self.config.validate_language(language)
             speed = self.config.validate_speed(speed)
 
-            # For simple synthesis, we'll use zero-shot without audio
-            # Just provide empty audio and text
-            result = self.synthesize_zero_shot(
-                text=text,
-                prompt_text="",
-                prompt_audio=None,
-                language=language,
-                speed=speed,
-                output_filename=output_filename,
-                stream=stream
-            )
+            # Check if we have built-in speakers
+            available_speakers = self.list_available_speakers()
 
-            return result
+            if not available_speakers:
+                raise ValueError(
+                    "No built-in speakers available in the model. "
+                    "Use synthesize_zero_shot() with an audio sample instead, or "
+                    "use synthesize_with_speaker_embedding() with a pre-saved speaker profile."
+                )
+
+            # Use provided speaker_id or first available speaker
+            if speaker_id is None:
+                speaker_id = available_speakers[0]
+                logger.info(f"No speaker_id provided, using default: {speaker_id}")
+            elif speaker_id not in available_speakers:
+                raise ValueError(
+                    f"Speaker '{speaker_id}' not found. "
+                    f"Available speakers: {available_speakers}"
+                )
+
+            # Perform synthesis using SFT mode
+            logger.info(f"Synthesizing with speaker: {speaker_id}")
+            audio_chunks = []
+
+            for i, output in enumerate(self.model.inference_sft(
+                tts_text=text,
+                spk_id=speaker_id,
+                stream=stream,
+                speed=speed,
+                text_frontend=text_frontend
+            )):
+                audio_chunks.append(output['tts_speech'])
+                logger.info(f"Generated chunk {i + 1}")
+
+            # Concatenate all audio chunks
+            if audio_chunks:
+                final_audio = torch.cat(audio_chunks, dim=1)
+            else:
+                raise RuntimeError("No audio generated")
+
+            # Generate output filename if not provided
+            if output_filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"simple_{speaker_id}_{timestamp}.wav"
+
+            # Save audio
+            output_path = self.config.get_output_path('tts', output_filename)
+            torchaudio.save(str(output_path), final_audio, self.sample_rate)
+
+            logger.info(f"Synthesis completed. Saved to: {output_path}")
+
+            return {
+                'success': True,
+                'output_path': str(output_path),
+                'audio': final_audio,
+                'sample_rate': self.sample_rate,
+                'duration': final_audio.shape[1] / self.sample_rate,
+                'speaker_id': speaker_id,
+                'parameters': {
+                    'text': text,
+                    'language': language,
+                    'speed': speed,
+                    'stream': stream
+                }
+            }
 
         except Exception as e:
             logger.error(f"Simple synthesis failed: {str(e)}")
